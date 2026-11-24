@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rustenburg Junior League</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#001435"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#001435;--navy2:#0a2552;--blue:#006fba;--sky:#4aa3e8;--silver:#a9aeb5;--chalk:#f3f5f9;--line:#d6dbe3;--ink:#0b1730;--muted:#55607a;--red:#b3261e;--lead:#e3effa}
+*{box-sizing:border-box}
+body{margin:0;font-family:Barlow,system-ui,sans-serif;background:var(--chalk);color:var(--ink);font-size:16px}
+
+/* Cover screen */
+#cover{position:fixed;inset:0;z-index:50;background:radial-gradient(circle at 50% 40%,var(--navy2),var(--navy) 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .4s}
+#cover img{width:min(56vw,240px);height:auto;filter:drop-shadow(0 8px 24px rgba(0,0,0,.45))}
+#cover p{margin:0;color:#fff;font:700 1.1rem "Barlow Condensed",sans-serif;letter-spacing:2px;text-transform:uppercase;opacity:.85}
+#cover.gone{opacity:0;pointer-events:none}
+
+header{background:var(--navy);color:#fff;padding:14px 16px 0;border-bottom:4px solid var(--blue);box-shadow:inset 0 -1px 0 var(--silver)}
+.brand{display:flex;align-items:center;gap:12px;max-width:760px;margin:0 auto 10px}
+.brand img{width:58px;height:auto;flex:none}
+h1{font:800 1.9rem/1 "Barlow Condensed",Impact,sans-serif;margin:0;letter-spacing:.5px;text-transform:uppercase}
+.brand p{margin:3px 0 0;color:var(--silver);font-size:.9rem;font-weight:600;letter-spacing:.5px}
+nav{display:flex;gap:4px;align-items:flex-end;max-width:760px;margin:0 auto}
+nav button{flex:1;background:transparent;color:#cfd6e2;border:0;padding:10px 4px;font:600 1rem Barlow,sans-serif;border-bottom:3px solid transparent;cursor:pointer}
+nav button.on{border-color:var(--sky);color:#fff}
+main{max-width:760px;margin:0 auto;padding:16px}
+section{display:none}section.on{display:block}
+h2{font:700 1.5rem "Barlow Condensed",Impact,sans-serif;margin:20px 0 8px}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line)}
+th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{background:var(--navy);color:#fff;font-weight:600;font-size:.85rem}
+td:nth-child(2),th:nth-child(2){text-align:left}
+td.pts{font-weight:700;color:var(--navy)}
+tbody tr:first-child td{background:var(--lead)}
+tbody tr:first-child td:first-child{box-shadow:inset 4px 0 0 var(--blue)}
+.wrap{overflow-x:auto}
+#tableBox h2{margin:4px 0 10px;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
+small.ages{display:block;color:var(--muted);font-size:.78rem}
+.fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px;margin-bottom:8px}
+.fx .t{font-weight:600}.fx .t:last-of-type{text-align:right}
+.fx .sc{font:700 1.4rem "Barlow Condensed",sans-serif;background:var(--navy);color:#fff;padding:2px 12px;min-width:70px;text-align:center}
+.fx .sc.up{background:var(--line);color:var(--ink);font-size:1rem}
+.fx small{grid-column:1/-1;color:var(--muted)}
+.team{background:#fff;border:1px solid var(--line);border-left:4px solid var(--navy);padding:10px 12px;margin-bottom:8px}
+.team b{font:700 1.2rem "Barlow Condensed",sans-serif;color:var(--navy)}
+.team ul{margin:6px 0 0;padding-left:18px;color:#36425a}
+.empty{color:var(--muted);padding:12px 0}
+button.pri,.admin-only button,.owner-box button{background:var(--blue);color:#fff;border:0;padding:9px 14px;font:600 .95rem Barlow,sans-serif;cursor:pointer}
+button.sec,.admin-only a.sec{background:#fff;color:var(--navy);border:2px solid var(--navy);padding:7px 12px;font:600 .95rem Barlow,sans-serif;cursor:pointer;text-decoration:none;display:inline-block}
+button.x,.admin-only button.x,.owner-box button.x{background:transparent;color:var(--red);border:0;cursor:pointer;font-weight:600;padding:4px 6px}
+.staff button{border:0;background:transparent;cursor:pointer;font:600 .95rem Barlow,sans-serif;padding:4px 6px}
+.staff button.lnk{color:var(--blue)}.staff button.x{color:var(--red)}
+input,select{font:inherit;padding:8px;border:1px solid var(--line);background:#fff;max-width:100%}
+:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.admin-only{display:none;background:#e9f1fa;border:1px solid var(--line);padding:12px;margin:12px 0}
+body.admin .admin-only{display:block}
+.admin-only form,.owner-box form{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}
+.admin-only b,.owner-box b{color:var(--navy)}
+.note{font-size:.9rem;color:var(--muted);margin:2px 0 8px}
+.sbox input{width:52px;text-align:center}
+.bar{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:8px 16px;max-width:760px;margin:0 auto;font-size:.9rem;color:var(--muted)}
+.bar button.pri{background:var(--navy)}
+dialog{border:0;border-top:5px solid var(--blue);padding:20px;max-width:340px;width:90%}dialog form{display:grid;gap:10px}
+dialog img{width:70px;height:auto;justify-self:center}
+.msg{color:var(--red);font-size:.9rem;min-height:1.2em}
+.ok{color:#17663a}
+.streams{display:flex;gap:6px;max-width:760px;margin:0 auto;padding:12px 16px 0}.streams button{flex:1;padding:9px 0;border:2px solid var(--navy);background:#fff;color:var(--navy);font:700 1.1rem "Barlow Condensed",sans-serif;cursor:pointer}.streams button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.owner-only{display:none}body.owner nav .owner-only{display:block}
+.owner-box{background:#fff;border:1px solid var(--line);padding:12px;margin-bottom:12px}
+.staff{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px 12px;margin-bottom:8px}
+.staff .who{flex:1;min-width:180px}.staff .who span{display:block;color:var(--muted);font-size:.9rem}
+.preview{background:#fff;border:1px solid var(--line);padding:10px 12px;margin-top:8px}
+.preview ul{margin:6px 0;padding-left:18px}
+</style>
+</head>
+<body>
+<div id="cover"><img src="logo.png" alt="Rustenburg Junior League"><p>Loading</p></div>
+
+<header>
+  <div class="brand">
+    <img src="logo.png" alt="">
+    <div><h1>Rustenburg Junior League</h1><p>Under 11 · 13 · 15 · 17</p></div>
+  </div>
+  <nav id="tabs">
+    <button data-t="table" class="on">Table</button>
+    <button data-t="fixtures">Fixtures</button>
+    <button data-t="teams">Teams</button>
+    <button data-t="staff" class="owner-only">Admins</button>
+  </nav>
+</header>
+<div class="bar"><span id="who"></span><button class="pri" id="installBtn" hidden>Install app</button><button class="pri" id="loginBtn">Admin login</button></div>
+<div class="streams" id="streams"></div>
+<main>
+  <section id="table" class="on"><div class="wrap" id="tableBox"></div></section>
+
+  <section id="fixtures">
+    <div class="admin-only">
+      <b>Add fixture</b>
+      <form id="fxForm">
+        <input type="date" id="fxDate" required>
+        <select id="fxHome" required></select>
+        <select id="fxAway" required></select>
+        <button>Add fixture</button>
+      </form>
+      <b>Upload or update fixtures from Excel</b>
+      <p class="note">Columns: Date, Age group, Home team, Away team, Home goals, Away goals. Fill in both goals to record a score, or leave them blank for a game not played yet. A fixture already in the app (same age group, teams and date) is updated, not added twice. Teams must already be on the Teams tab.</p>
+      <form id="fxXlForm" onsubmit="return false">
+        <input type="file" id="fxXlFile" accept=".xlsx,.xls,.csv">
+        <a class="sec" href="rjl-fixtures-template.xlsx" download>Download template</a>
+        <button type="button" class="sec" id="fxExport">Download current fixtures</button>
+      </form>
+      <div id="fxXlPreview"></div>
+    </div>
+    <div id="fxBox"></div>
+  </section>
+
+  <section id="teams">
+    <div class="admin-only">
+      <b>Add team</b>
+      <form id="teamForm"><select id="teamStream"><option>U11</option><option>U13</option><option>U15</option><option>U17</option></select><input id="teamName" placeholder="Team name" required><button>Add team</button></form>
+      <b>Upload teams from Excel</b>
+      <p class="note">One team per row, with a "Team" column and an "Age group" column (U11, U13, U15 or U17). Teams already in the app are skipped.</p>
+      <form id="xlForm" onsubmit="return false">
+        <input type="file" id="xlFile" accept=".xlsx,.xls,.csv">
+        <a class="sec" href="rjl-teams-template.xlsx" download>Download template</a>
+      </form>
+      <div id="xlPreview"></div>
+      <b>Add player</b>
+      <form id="plForm">
+        <input id="plName" placeholder="Player name" required>
+        <input id="plNo" type="number" min="0" max="99" placeholder="No." style="width:70px">
+        <select id="plTeam" required></select>
+        <button>Add player</button>
+      </form>
+    </div>
+    <div id="teamBox"></div>
+  </section>
+
+  <section id="staff">
+    <div class="owner-box">
+      <b>Add an admin</b>
+      <p class="note">Admins can add and edit teams, players, fixtures and scores. Only you can add or remove admins. Give them the email and password you set here.</p>
+      <form id="staffForm">
+        <input id="stName" placeholder="Name" required>
+        <input id="stEmail" type="email" placeholder="Email" required autocomplete="off">
+        <input id="stPw" type="text" placeholder="Password (6+ characters)" minlength="6" required autocomplete="new-password">
+        <button>Create login</button>
+      </form>
+      <div class="msg" id="staffMsg"></div>
+    </div>
+    <div id="staffBox"></div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form id="loginForm" method="dialog">
+    <img src="logo.png" alt="">
+    <b>Admin login</b>
+    <input type="email" id="em" placeholder="Email" required autocomplete="username">
+    <input type="password" id="pw" placeholder="Password" required autocomplete="current-password">
+    <div class="msg" id="loginMsg"></div>
+    <button class="pri" type="submit">Log in</button>
+    <button class="x" type="button" id="cancelLogin">Cancel</button>
+  </form>
+</dialog>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, deleteDoc, updateDoc, setDoc, getDoc, doc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// The main admin of the app. Must match the email in firestore.rules.
+const OWNER_EMAIL = "amogelangmabilu56@gmail.com".toLowerCase();
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC-ir6GWKEIO7vezsmnBs11z9f7XBHCvtk",
+  authDomain: "rustenburg-juniour-league.firebaseapp.com",
+  projectId: "rustenburg-juniour-league",
+  storageBucket: "rustenburg-juniour-league.firebasestorage.app",
+  messagingSenderId: "165556811109",
+  appId: "1:165556811109:web:661f049e87b4776ccc9d8c"
+};
+const app = initializeApp(firebaseConfig);
+// Keeps the last loaded table/fixtures/teams on the phone so the app still shows data offline
+const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+const auth = getAuth(app);
+
+let teams = [], players = [], fixtures = [], staff = [];
+const STREAMS = ["U11","U13","U15","U17"]; let stream = "U11";
+const $ = id => document.getElementById(id);
+const ts = () => teams.filter(t => t.stream === stream);
+const fxs = () => fixtures.filter(f => f.stream === stream);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tname = id => (teams.find(t => t.id === id) || {}).name || "Unknown team";
+const isAdmin = () => document.body.classList.contains("admin");
+const isOwner = () => document.body.classList.contains("owner");
+
+// Cover screen: hide once data arrives (or after 3 seconds if offline)
+const hideCover = () => $("cover").classList.add("gone");
+setTimeout(hideCover, 3000);
+
+// The Combined log is only on the Table tab; Fixtures and Teams stay per age group
+let tab = "table", combined = false;
+function renderStreams() {
+  const onTable = tab === "table";
+  $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream && !(onTable && combined) ? "on" : ""}">${x}</button>`).join("")
+    + (onTable ? `<button data-s="ALL" class="${combined ? "on" : ""}">Combined</button>` : "");
+}
+$("streams").addEventListener("click", e => {
+  const s = e.target.dataset.s; if (!s) return;
+  if (s === "ALL") combined = true;
+  else { combined = false; stream = s; $("teamStream").value = stream; }
+  render();
+});
+
+// Tabs
+function showTab(t) {
+  tab = t; renderStreams();
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === t));
+  $("streams").style.display = t === "staff" ? "none" : "";
+}
+$("tabs").addEventListener("click", e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
+
+// Live data
+onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name || "").localeCompare(b.name || "")); hideCover(); render(); });
+onSnapshot(collection(db, "players"), s => { players = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
+onSnapshot(collection(db, "fixtures"), s => { fixtures = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.date||"").localeCompare(b.date||"")); render(); });
+
+const byRank = (x,y) => y.pts - x.pts || (y.gf-y.ga) - (x.gf-x.ga) || y.gf - x.gf || x.name.localeCompare(y.name);
+function standings(st = stream) {
+  const r = {};
+  teams.filter(t => t.stream === st).forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
+  fixtures.filter(f => f.played && r[f.home] && r[f.away]).forEach(f => {
+    const h = r[f.home], a = r[f.away], hg = +f.homeGoals, ag = +f.awayGoals;
+    h.p++; a.p++; h.gf += hg; h.ga += ag; a.gf += ag; a.ga += hg;
+    if (hg > ag) { h.w++; a.l++; h.pts += 3; }
+    else if (hg < ag) { a.w++; h.l++; a.pts += 3; }
+    else { h.d++; a.d++; h.pts++; a.pts++; }
+  });
+  return Object.values(r).sort(byRank);
+}
+// Combined log: each club's results from all age groups added together (clubs matched by name)
+function combinedStandings() {
+  const c = {};
+  STREAMS.forEach(st => standings(st).forEach(r => {
+    const k = r.name.trim().toLowerCase();
+    const x = c[k] ||= { name: r.name, ages: [], p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 };
+    x.ages.push(st); ["p","w","d","l","gf","ga","pts"].forEach(f => x[f] += r[f]);
+  }));
+  return Object.values(c).sort(byRank);
+}
+
+function render() {
+  renderStreams();
+  // Table
+  const rows = combined ? combinedStandings() : standings();
+  $("tableBox").innerHTML = `<h2>${combined ? "Combined Log" : stream + " Log"}</h2>` + (rows.length ? `<table><thead><tr><th>#</th><th>${combined ? "Club" : "Team"}</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
+    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}${combined ? `<small class="ages">${r.ages.join(" · ")}</small>` : ""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</tbody></table>`
+    + (combined ? `<p class="note" style="margin-top:8px">Points, goals and games from U11, U13, U15 and U17 added together for each club.</p>` : "")
+    : `<p class="empty">No ${combined ? "" : stream + " "}teams yet. An admin can add teams on the Teams tab.</p>`);
+
+  // Fixtures (keep any scores an admin is busy typing when live data refreshes)
+  const typed = {};
+  document.querySelectorAll(".sbox input").forEach(i => { if (i.value !== i.defaultValue) typed[i.id] = i.value; });
+  $("fxBox").innerHTML = fxs().length ? fxs().map(f => `
+    <div class="fx">
+      <span class="t">${esc(tname(f.home))}</span>
+      ${f.played ? `<span class="sc">${esc(f.homeGoals)} - ${esc(f.awayGoals)}</span>` : `<span class="sc up">vs</span>`}
+      <span class="t">${esc(tname(f.away))}</span>
+      <small>${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
+      ${isAdmin() ? `<div class="sbox" style="grid-column:1/-1">
+        <input type="number" min="0" step="1" id="h_${f.id}" value="${esc(f.homeGoals)}" aria-label="Home goals">
+        <input type="number" min="0" step="1" id="a_${f.id}" value="${esc(f.awayGoals)}" aria-label="Away goals">
+        <button data-save="${f.id}">Save score</button>
+        <button class="x" data-delfx="${f.id}">Delete</button></div>` : ""}
+    </div>`).join("") : `<p class="empty">No ${stream} fixtures yet.</p>`;
+  Object.entries(typed).forEach(([id, v]) => { const el = $(id); if (el) el.value = v; });
+
+  // Teams + players
+  $("teamBox").innerHTML = ts().length ? ts().map(t => {
+    const ps = players.filter(p => p.teamId === t.id).sort((a,b) => (a.number ?? 99) - (b.number ?? 99));
+    return `<div class="team"><b>${esc(t.name)}</b>${isAdmin() ? ` <button class="x" data-delteam="${t.id}">Delete team</button>` : ""}
+      ${ps.length ? `<ul>${ps.map(p => `<li>${p.number != null && p.number !== "" ? esc(p.number) + ". " : ""}${esc(p.name)}${isAdmin() ? ` <button class="x" data-delpl="${p.id}">Remove</button>` : ""}</li>`).join("")}</ul>` : `<div class="empty">No players yet.</div>`}</div>`;
+  }).join("") : `<p class="empty">No ${stream} teams yet.</p>`;
+
+  // Dropdowns (keep selection)
+  const opts = ts().map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  [["fxHome","Home team"],["fxAway","Away team"],["plTeam","Team"]].forEach(([id, label]) => {
+    const el = $(id), v = el.value;
+    el.innerHTML = `<option value="" disabled selected>${label}</option>` + opts;
+    if (v) el.value = v;
+  });
+
+  renderStaff();
+}
+
+// Admin actions
+document.addEventListener("click", async e => {
+  const d = e.target.dataset; if (!isAdmin()) return;
+  try {
+    if (d.save) {
+      const h = $("h_" + d.save).value, a = $("a_" + d.save).value;
+      if (h === "" || a === "") return alert("Enter both scores.");
+      if (!Number.isInteger(+h) || !Number.isInteger(+a) || +h < 0 || +a < 0) return alert("Scores must be whole numbers, 0 or more.");
+      await updateDoc(doc(db, "fixtures", d.save), { homeGoals: +h, awayGoals: +a, played: true });
+    }
+    if (d.delfx && confirm("Delete this fixture?")) await deleteDoc(doc(db, "fixtures", d.delfx));
+    if (d.delteam) {
+      const tf = fixtures.filter(f => f.home === d.delteam || f.away === d.delteam);
+      const tp = players.filter(p => p.teamId === d.delteam);
+      if (confirm(`Delete ${tname(d.delteam)}? This also deletes its ${tp.length} player(s) and ${tf.length} fixture(s), and the table will change.`)) {
+        const b = writeBatch(db);
+        b.delete(doc(db, "teams", d.delteam));
+        tp.forEach(p => b.delete(doc(db, "players", p.id)));
+        tf.forEach(f => b.delete(doc(db, "fixtures", f.id)));
+        await b.commit();
+      }
+    }
+    if (d.delpl && confirm("Remove this player?")) await deleteDoc(doc(db, "players", d.delpl));
+  } catch (err) { alert("Could not save: " + err.message); }
+});
+
+$("teamForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("teamName").value.trim().replace(/\s+/g, " "), st = $("teamStream").value;
+  if (teams.some(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase())) return alert(`${name} is already in ${st}.`);
+  try { await addDoc(collection(db, "teams"), { name, stream: st, created: serverTimestamp() }); $("teamName").value = ""; }
+  catch (err) { alert("Could not save: " + err.message); }
+});
+$("plForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await addDoc(collection(db, "players"), { name: $("plName").value.trim(), number: $("plNo").value === "" ? null : +$("plNo").value, teamId: $("plTeam").value });
+    $("plName").value = ""; $("plNo").value = "";
+  } catch (err) { alert("Could not save: " + err.message); }
+});
+$("fxForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if ($("fxHome").value === $("fxAway").value) return alert("Pick two different teams.");
+  try { await addDoc(collection(db, "fixtures"), { stream, date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
+  catch (err) { alert("Could not save: " + err.message); }
+});
+
+const loadXLSX = () => import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+
+// ---------- Excel upload of teams ----------
+let pending = [];
+const normStream = v => { const n = String(v ?? "").replace(/[^0-9]/g, ""); return STREAMS.includes("U" + n) ? "U" + n : null; };
+const cleanName = v => String(v ?? "").trim().replace(/\s+/g, " ");
+
+function readTeamRows(rows) {
+  // Find the header row (within the first 10 rows) that has a team column and an age group column
+  let hr = -1, tc = -1, ac = -1;
+  for (let i = 0; i < Math.min(rows.length, 10) && hr < 0; i++) {
+    const cells = rows[i].map(c => String(c).trim().toLowerCase());
+    const a = cells.findIndex(c => /age|under|group|stream|division|category/.test(c));
+    const t = cells.findIndex((c, j) => j !== a && /team|club|name/.test(c));
+    if (t >= 0 && a >= 0) { hr = i; tc = t; ac = a; }
+  }
+  if (hr < 0) return { error: 'Could not find the column headings. Row 1 must have "Team" and "Age group" headings, as in the template.' };
+
+  const ok = [], skipped = [], problems = [], seen = new Set();
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i], name = cleanName(r[tc]), raw = String(r[ac] ?? "").trim(), rowNo = i + 1;
+    if (!name && !raw) continue;
+    if (!name) { problems.push(`Row ${rowNo}: no team name`); continue; }
+    const st = normStream(raw);
+    if (!st) { problems.push(`Row ${rowNo}: ${name} – age group "${raw || "blank"}" not recognised`); continue; }
+    const key = st + "|" + name.toLowerCase();
+    if (seen.has(key) || teams.some(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase())) { skipped.push(`${name} (${st})`); continue; }
+    seen.add(key); ok.push({ name, stream: st });
+  }
+  return { ok, skipped, problems };
+}
+
+$("xlFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; pending = []; if (!f) return;
+  const box = $("xlPreview"); box.innerHTML = `<div class="preview">Reading ${esc(f.name)}…</div>`;
+  try {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.read(await f.arrayBuffer());
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
+    const res = readTeamRows(rows);
+    if (res.error) { box.innerHTML = `<div class="preview msg">${esc(res.error)}</div>`; return; }
+    pending = res.ok;
+    const count = STREAMS.map(s => [s, pending.filter(t => t.stream === s).length]).filter(([, n]) => n).map(([s, n]) => `${s}: ${n}`).join(" · ");
+    box.innerHTML = `<div class="preview">
+      ${pending.length ? `<b>${pending.length} team(s) ready to add</b> <span class="note">(${count})</span>` : `<b>No new teams to add.</b>`}
+      ${res.skipped.length ? `<p class="note">Skipped, already in the app or listed twice (${res.skipped.length}): ${res.skipped.map(esc).join(", ")}</p>` : ""}
+      ${res.problems.length ? `<p class="msg" style="margin:6px 0 0">Rows not added (${res.problems.length}):</p><ul class="msg">${res.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+      ${pending.length ? `<button id="xlGo">Add ${pending.length} team(s)</button> ` : ""}<button class="x" id="xlCancel">Cancel</button>
+    </div>`;
+  } catch (err) { box.innerHTML = `<div class="preview msg">Could not read that file. Save it as .xlsx and try again. (${esc(err.message)})</div>`; }
+});
+
+$("xlPreview").addEventListener("click", async e => {
+  if (e.target.id === "xlCancel") { pending = []; $("xlFile").value = ""; $("xlPreview").innerHTML = ""; }
+  if (e.target.id === "xlGo" && pending.length) {
+    e.target.disabled = true; e.target.textContent = "Adding…";
+    try {
+      for (let i = 0; i < pending.length; i += 400) {
+        const b = writeBatch(db);
+        pending.slice(i, i + 400).forEach(t => b.set(doc(collection(db, "teams")), { ...t, created: serverTimestamp() }));
+        await b.commit();
+      }
+      $("xlPreview").innerHTML = `<div class="preview ok">${pending.length} team(s) added.</div>`;
+      pending = []; $("xlFile").value = "";
+    } catch (err) { e.target.disabled = false; e.target.textContent = "Try again"; alert("Could not save: " + err.message); }
+  }
+});
+
+// ---------- Excel upload / update of fixtures ----------
+let fxPending = { adds: [], updates: [] };
+const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const pad = n => String(n).padStart(2, "0");
+function mkDate(y, m, d) {
+  y = +y; m = +m; d = +d; if (y < 100) y += 2000;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : null;
+}
+// Returns "YYYY-MM-DD", "" for no date / to be confirmed, or null if it can't be read
+function readDate(v) {
+  if (v === "" || v == null) return "";
+  if (typeof v === "number") { const t = new Date(Math.round((v - 25569) * 86400000)); return mkDate(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); }
+  if (v instanceof Date) return mkDate(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  const s = String(v).trim(); let m;
+  if (!s || /^(tbc|tba|to be confirmed)$/i.test(s)) return "";
+  if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return mkDate(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/))) return mkDate(m[3], m[2], m[1]); // day first, as in SA
+  if ((m = s.match(/^(\d{1,2})\s+([a-z]{3})[a-z]*\.?,?\s+(\d{2,4})$/i)) && MONTHS.includes(m[2].toLowerCase())) return mkDate(m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, m[1]);
+  return null;
+}
+// Returns a whole number, "" for blank, or NaN if it is not a valid score
+const readGoals = v => { const s = String(v ?? "").trim(); if (s === "") return ""; return /^\d+$/.test(s) ? +s : NaN; };
+const teamId = (st, name) => (teams.find(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase()) || {}).id;
+
+function readFixtureRows(rows) {
+  let hr = -1, col = {};
+  for (let i = 0; i < Math.min(rows.length, 10) && hr < 0; i++) {
+    const c = rows[i].map(x => String(x).trim().toLowerCase()), find = re => c.findIndex(re);
+    const k = {
+      hg: find(x => /home/.test(x) && /goal|score/.test(x)), ag: find(x => /away/.test(x) && /goal|score/.test(x)),
+      home: find(x => /home/.test(x) && !/goal|score/.test(x)), away: find(x => /away|visitor/.test(x) && !/goal|score/.test(x)),
+      date: find(x => /date/.test(x)), age: find(x => /age|under|group|stream|division|category/.test(x))
+    };
+    if (k.home >= 0 && k.away >= 0 && k.age >= 0) { hr = i; col = k; }
+  }
+  if (hr < 0) return { error: 'Could not find the column headings. Row 1 must have "Age group", "Home team" and "Away team" headings, as in the template.' };
+
+  const adds = [], updates = [], problems = [], seen = new Set(); let same = 0;
+  const cell = (r, k) => col[k] >= 0 ? r[col[k]] : "";
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i], rowNo = i + 1;
+    const homeN = cleanName(cell(r, "home")), awayN = cleanName(cell(r, "away")), rawAge = String(cell(r, "age") ?? "").trim();
+    if (!homeN && !awayN && !rawAge) continue;
+    const st = normStream(rawAge);
+    if (!st) { problems.push(`Row ${rowNo}: age group "${rawAge || "blank"}" not recognised`); continue; }
+    if (!homeN || !awayN) { problems.push(`Row ${rowNo}: home team or away team missing`); continue; }
+    const h = teamId(st, homeN), a = teamId(st, awayN);
+    if (!h || !a) { problems.push(`Row ${rowNo}: ${[!h && homeN, !a && awayN].filter(Boolean).join(" and ")} not found in ${st} teams`); continue; }
+    if (h === a) { problems.push(`Row ${rowNo}: ${homeN} cannot play itself`); continue; }
+    const date = readDate(cell(r, "date"));
+    if (date === null) { problems.push(`Row ${rowNo}: date "${cell(r, "date")}" not recognised (use 2026-11-28 or 28/11/2026)`); continue; }
+    const hg = readGoals(cell(r, "hg")), ag = readGoals(cell(r, "ag"));
+    if (Number.isNaN(hg) || Number.isNaN(ag)) { problems.push(`Row ${rowNo}: goals must be whole numbers`); continue; }
+    if ((hg === "") !== (ag === "")) { problems.push(`Row ${rowNo}: fill in both home and away goals, or leave both blank`); continue; }
+    const key = [st, h, a, date].join("|");
+    if (seen.has(key)) { problems.push(`Row ${rowNo}: same game listed twice in the sheet`); continue; }
+    seen.add(key);
+    const score = hg !== "", label = `${st} ${homeN} v ${awayN}${date ? " (" + date + ")" : ""}`;
+
+    // Match an existing fixture: same age group, teams and date; or the same game still without a date
+    let ex = fixtures.find(f => f.stream === st && f.home === h && f.away === a && (f.date || "") === date), upd = {};
+    if (!ex && date) {
+      const undated = fixtures.filter(f => f.stream === st && f.home === h && f.away === a && !f.date);
+      if (undated.length === 1) { ex = undated[0]; upd.date = date; }
+    }
+    if (ex) {
+      if (score && (!ex.played || +ex.homeGoals !== hg || +ex.awayGoals !== ag)) Object.assign(upd, { homeGoals: hg, awayGoals: ag, played: true });
+      if (Object.keys(upd).length) updates.push({ id: ex.id, upd, label: label + (upd.played ? `: score ${hg}-${ag}` : ": date set") });
+      else same++;
+    } else {
+      adds.push({ data: { stream: st, date, home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
+    }
+  }
+  return { adds, updates, problems, same };
+}
+
+const listSome = (arr, n = 12) => arr.slice(0, n).map(x => `<li>${esc(x)}</li>`).join("") + (arr.length > n ? `<li>and ${arr.length - n} more</li>` : "");
+$("fxXlFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; fxPending = { adds: [], updates: [] }; if (!f) return;
+  const box = $("fxXlPreview"); box.innerHTML = `<div class="preview">Reading ${esc(f.name)}…</div>`;
+  try {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.read(await f.arrayBuffer());
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true });
+    const res = readFixtureRows(rows);
+    if (res.error) { box.innerHTML = `<div class="preview msg">${esc(res.error)}</div>`; return; }
+    fxPending = res; const total = res.adds.length + res.updates.length;
+    box.innerHTML = `<div class="preview">
+      ${res.adds.length ? `<b>${res.adds.length} new fixture(s)</b><ul>${listSome(res.adds.map(x => x.label))}</ul>` : ""}
+      ${res.updates.length ? `<b>${res.updates.length} fixture(s) to update</b><ul>${listSome(res.updates.map(x => x.label))}</ul>` : ""}
+      ${!total ? `<b>Nothing new to add or update.</b>` : ""}
+      ${res.same ? `<p class="note">${res.same} fixture(s) already up to date.</p>` : ""}
+      ${res.problems.length ? `<p class="msg" style="margin:6px 0 0">Rows not used (${res.problems.length}):</p><ul class="msg">${listSome(res.problems, 30)}</ul>` : ""}
+      ${total ? `<button id="fxXlGo">Save ${total} change(s)</button> ` : ""}<button class="x" id="fxXlCancel">Cancel</button>
+    </div>`;
+  } catch (err) { box.innerHTML = `<div class="preview msg">Could not read that file. Save it as .xlsx and try again. (${esc(err.message)})</div>`; }
+});
+$("fxXlPreview").addEventListener("click", async e => {
+  if (e.target.id === "fxXlCancel") { fxPending = { adds: [], updates: [] }; $("fxXlFile").value = ""; $("fxXlPreview").innerHTML = ""; }
+  if (e.target.id === "fxXlGo") {
+    const ops = [...fxPending.adds.map(x => ["add", x]), ...fxPending.updates.map(x => ["upd", x])];
+    e.target.disabled = true; e.target.textContent = "Saving…";
+    try {
+      for (let i = 0; i < ops.length; i += 400) {
+        const b = writeBatch(db);
+        ops.slice(i, i + 400).forEach(([k, x]) => k === "add" ? b.set(doc(collection(db, "fixtures")), x.data) : b.update(doc(db, "fixtures", x.id), x.upd));
+        await b.commit();
+      }
+      $("fxXlPreview").innerHTML = `<div class="preview ok">${fxPending.adds.length} fixture(s) added, ${fxPending.updates.length} updated.</div>`;
+      fxPending = { adds: [], updates: [] }; $("fxXlFile").value = "";
+    } catch (err) { e.target.disabled = false; e.target.textContent = "Try again"; alert("Could not save: " + err.message); }
+  }
+});
+$("fxExport").addEventListener("click", async () => {
+  try {
+    const XLSX = await loadXLSX();
+    const list = [...fixtures].sort((x, y) => STREAMS.indexOf(x.stream) - STREAMS.indexOf(y.stream) || (x.date || "9").localeCompare(y.date || "9"));
+    const ws = XLSX.utils.aoa_to_sheet([["Date","Age group","Home team","Away team","Home goals","Away goals"],
+      ...list.map(f => [f.date || "", f.stream || "", tname(f.home), tname(f.away), f.played ? f.homeGoals : "", f.played ? f.awayGoals : ""])]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 28 }, { wch: 28 }, { wch: 11 }, { wch: 11 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
+    const d = new Date(); XLSX.writeFile(wb, `RJL fixtures ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`);
+  } catch (err) { alert("Could not download: " + err.message); }
+});
+
+// ---------- Admins (only the main admin sees this) ----------
+let staffUnsub = null, makerAuth = null;
+function renderStaff() {
+  if (!isOwner()) { $("staffBox").innerHTML = ""; return; }
+  $("staffBox").innerHTML = staff.length ? staff.map(s => `<div class="staff">
+      <div class="who"><b>${esc(s.name)}</b><span>${esc(s.email)}</span></div>
+      <button class="lnk" data-reset="${esc(s.email)}">Send password reset email</button>
+      <button class="x" data-unstaff="${esc(s.email)}">Remove access</button></div>`).join("")
+    : `<p class="empty">No other admins yet.</p>`;
+}
+$("staffForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = cleanName($("stName").value), email = $("stEmail").value.trim().toLowerCase(), pw = $("stPw").value, m = $("staffMsg");
+  m.className = "msg"; m.textContent = "";
+  if (email === OWNER_EMAIL) { m.textContent = "That is your own login."; return; }
+  if (staff.some(s => s.email === email)) { m.textContent = `${email} is already an admin.`; return; }
+  let existed = false;
+  try {
+    // A separate sign-in instance creates the account, so you stay logged in as yourself
+    if (!makerAuth) makerAuth = initializeAuth(initializeApp(firebaseConfig, "login-maker"), { persistence: inMemoryPersistence });
+    await createUserWithEmailAndPassword(makerAuth, email, pw);
+    await signOut(makerAuth);
+  } catch (err) {
+    if (err.code === "auth/email-already-in-use") existed = true;
+    else { m.textContent = err.code === "auth/weak-password" ? "Password must be at least 6 characters." : err.code === "auth/invalid-email" ? "That email address is not valid." : "Could not create the login: " + err.message; return; }
+  }
+  try {
+    await setDoc(doc(db, "staff", email), { name, email, added: serverTimestamp(), addedBy: auth.currentUser.email });
+    e.target.reset(); m.className = "msg ok";
+    m.textContent = existed
+      ? `${name} added. This email already had a login, so the password you typed was not set. Use "Send password reset email" so they can set their own.`
+      : `Login created. Give ${name} the email and password you set.`;
+  } catch (err) { m.textContent = "Could not save: " + err.message; }
+});
+$("staffBox").addEventListener("click", async e => {
+  const d = e.target.dataset; if (!isOwner()) return;
+  try {
+    if (d.reset) { await sendPasswordResetEmail(auth, d.reset); alert(`Password reset email sent to ${d.reset}.`); }
+    if (d.unstaff && confirm(`Remove ${d.unstaff}? They will no longer be able to make changes.`)) await deleteDoc(doc(db, "staff", d.unstaff));
+  } catch (err) { alert("Could not do that: " + err.message); }
+});
+
+// ---------- Login ----------
+$("loginBtn").addEventListener("click", () => auth.currentUser ? signOut(auth) : $("dlg").showModal());
+$("cancelLogin").addEventListener("click", () => $("dlg").close());
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault(); $("loginMsg").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("em").value.trim(), $("pw").value); $("dlg").close(); $("pw").value = ""; }
+  catch (err) {
+    const c = err.code || "";
+    $("loginMsg").textContent = c === "auth/network-request-failed" ? "No internet connection. Connect and try again."
+      : c === "auth/too-many-requests" ? "Too many attempts. Wait a few minutes and try again."
+      : "Wrong email or password. Check both and try again.";
+  }
+});
+function setRole(role, email) {
+  document.body.classList.toggle("admin", !!role);
+  document.body.classList.toggle("owner", role === "owner");
+  $("who").textContent = role ? `${role === "owner" ? "Main admin" : "Admin"}: ${email}` : "";
+  $("loginBtn").textContent = email ? "Log out" : "Admin login";
+  if (role === "owner" && !staffUnsub) {
+    staffUnsub = onSnapshot(collection(db, "staff"), s => { staff = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name || "").localeCompare(b.name || "")); renderStaff(); });
+  }
+  if (role !== "owner") {
+    if (staffUnsub) { staffUnsub(); staffUnsub = null; }
+    staff = [];
+    if ($("staff").classList.contains("on")) showTab("table");
+  }
+  render();
+}
+onAuthStateChanged(auth, async u => {
+  if (!u) return setRole(null, null);
+  const email = (u.email || "").toLowerCase();
+  if (email === OWNER_EMAIL) return setRole("owner", email);
+  try {
+    const s = await getDoc(doc(db, "staff", email));
+    if (s.exists()) return setRole("admin", email);
+    await signOut(auth);
+    alert(`${email} does not have admin access. Ask the main admin to add you.`);
+  } catch {
+    setRole(null, email);
+    $("who").textContent = "Could not check admin access. Check your internet connection and log in again.";
+  }
+});
+
+// Installable app
+let deferred;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; $("installBtn").hidden = false; });
+$("installBtn").addEventListener("click", async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $("installBtn").hidden = true; });
+if ("serviceWorker" in navigator) {
+  // When a new version of the app is uploaded, reload once so it shows straight away
+  const hadOld = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadOld && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+}
+</script>
+</body>
+</html>
