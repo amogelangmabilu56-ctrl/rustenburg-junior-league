@@ -68,6 +68,11 @@ dialog img{width:70px;height:auto;justify-self:center}
 .msg{color:var(--red);font-size:.9rem;min-height:1.2em}
 .ok{color:#17663a}
 .streams{display:flex;gap:6px;max-width:760px;margin:0 auto;padding:12px 16px 0}.streams button{flex:1;padding:9px 0;border:2px solid var(--navy);background:#fff;color:var(--navy);font:700 1.1rem "Barlow Condensed",sans-serif;cursor:pointer}.streams button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.seasonbar{max-width:760px;margin:0 auto;padding:0 16px}#seasonSel{width:100%;font:700 1.05rem Barlow,sans-serif;color:var(--navy);border:2px solid var(--navy);padding:8px 10px}
+.season{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--navy);padding:10px 12px;margin-bottom:8px}
+.season .who{flex:1;min-width:160px}.season .who span{display:block;color:var(--muted);font-size:.9rem}
+.season button{background:transparent;border:0;color:var(--blue);cursor:pointer;font:600 .95rem Barlow,sans-serif;padding:4px 6px}
+.owner-box label{display:flex;align-items:center;gap:6px;font-size:.95rem}
 .owner-only{display:none}body.owner nav .owner-only{display:block}
 .owner-box{background:#fff;border:1px solid var(--line);padding:12px;margin-bottom:12px}
 .staff{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px 12px;margin-bottom:8px}
@@ -88,10 +93,11 @@ dialog img{width:70px;height:auto;justify-self:center}
     <button data-t="table" class="on">Table</button>
     <button data-t="fixtures">Fixtures</button>
     <button data-t="teams">Teams</button>
-    <button data-t="staff" class="owner-only">Admins</button>
+    <button data-t="staff" class="owner-only">Manage</button>
   </nav>
 </header>
 <div class="bar"><span id="who"></span><button class="pri" id="installBtn" hidden>Install app</button><button class="pri" id="loginBtn">Admin login</button></div>
+<div class="seasonbar"><select id="seasonSel" aria-label="Season" hidden></select></div>
 <div class="streams" id="streams"></div>
 <main>
   <section id="table" class="on"><div class="wrap" id="tableBox"></div></section>
@@ -141,6 +147,17 @@ dialog img{width:70px;height:auto;justify-self:center}
 
   <section id="staff">
     <div class="owner-box">
+      <b>Seasons</b>
+      <p class="note" id="seasonNote">Each season has its own fixtures and logs. Past seasons stay in the app and anyone can view them with the season picker.</p>
+      <form id="seasonForm">
+        <input id="seasonName" placeholder="Season name, e.g. 2027" required>
+        <label id="carryWrap"><input type="checkbox" id="carry" checked> <span id="carryText">Bring over the teams from the current season</span></label>
+        <button>Start season</button>
+      </form>
+      <div class="msg" id="seasonMsg"></div>
+      <div id="seasonBox"></div>
+    </div>
+    <div class="owner-box">
       <b>Add an admin</b>
       <p class="note">Admins can add and edit teams, players, fixtures and scores. Only you can add or remove admins. Give them the email and password you set here.</p>
       <form id="staffForm">
@@ -169,7 +186,7 @@ dialog img{width:70px;height:auto;justify-self:center}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, deleteDoc, updateDoc, setDoc, getDoc, doc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, deleteDoc, updateDoc, setDoc, getDoc, doc, onSnapshot, serverTimestamp, writeBatch, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 // The main admin of the app. Must match the email in firestore.rules.
@@ -191,8 +208,14 @@ const auth = getAuth(app);
 let teams = [], players = [], fixtures = [], staff = [];
 const STREAMS = ["U11","U13","U15","U17"]; let stream = "U11";
 const $ = id => document.getElementById(id);
-const ts = () => teams.filter(t => t.stream === stream);
-const fxs = () => fixtures.filter(f => f.stream === stream);
+// Seasons: before the first season is started the app shows everything, as before
+let seasons = [], currentSeason = null, viewSeason = null, pickedSeason = false;
+const S = () => seasons.length ? viewSeason : null;
+const sName = id => (seasons.find(x => x.id === id) || {}).name || "";
+const inSeasonT = t => !S() || (t.seasons || []).includes(S());
+const inSeasonF = f => !S() || f.season === S();
+const ts = () => teams.filter(t => t.stream === stream && inSeasonT(t));
+const fxs = () => fixtures.filter(f => f.stream === stream && inSeasonF(f));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tname = id => (teams.find(t => t.id === id) || {}).name || "Unknown team";
 const isAdmin = () => document.body.classList.contains("admin");
@@ -227,14 +250,20 @@ $("tabs").addEventListener("click", e => { if (e.target.dataset.t) showTab(e.tar
 
 // Live data
 onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name || "").localeCompare(b.name || "")); hideCover(); render(); });
+onSnapshot(collection(db, "seasons"), s => { seasons = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.name || "").localeCompare(a.name || "", undefined, { numeric: true })); fixSeason(); render(); });
+onSnapshot(doc(db, "settings", "league"), s => { currentSeason = (s.data() || {}).currentSeason || null; fixSeason(); render(); });
+function fixSeason() {
+  if (!pickedSeason || !seasons.some(x => x.id === viewSeason)) viewSeason = seasons.some(x => x.id === currentSeason) ? currentSeason : (seasons[0] || {}).id || null;
+}
+$("seasonSel").addEventListener("change", e => { viewSeason = e.target.value; pickedSeason = true; render(); });
 onSnapshot(collection(db, "players"), s => { players = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
 onSnapshot(collection(db, "fixtures"), s => { fixtures = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.date||"").localeCompare(b.date||"")); render(); });
 
 const byRank = (x,y) => y.pts - x.pts || (y.gf-y.ga) - (x.gf-x.ga) || y.gf - x.gf || x.name.localeCompare(y.name);
 function standings(st = stream) {
   const r = {};
-  teams.filter(t => t.stream === st).forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
-  fixtures.filter(f => f.played && r[f.home] && r[f.away]).forEach(f => {
+  teams.filter(t => t.stream === st && inSeasonT(t)).forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
+  fixtures.filter(f => f.played && inSeasonF(f) && r[f.home] && r[f.away]).forEach(f => {
     const h = r[f.home], a = r[f.away], hg = +f.homeGoals, ag = +f.awayGoals;
     h.p++; a.p++; h.gf += hg; h.ga += ag; a.gf += ag; a.ga += hg;
     if (hg > ag) { h.w++; a.l++; h.pts += 3; }
@@ -256,9 +285,12 @@ function combinedStandings() {
 
 function render() {
   renderStreams();
+  const sel = $("seasonSel"); sel.hidden = !seasons.length;
+  sel.innerHTML = seasons.map(x => `<option value="${x.id}">Season ${esc(x.name)}${x.id === currentSeason ? " (current)" : ""}</option>`).join("");
+  if (viewSeason) sel.value = viewSeason;
   // Table
   const rows = combined ? combinedStandings() : standings();
-  $("tableBox").innerHTML = `<h2>${combined ? "Combined Log" : stream + " Log"}</h2>` + (rows.length ? `<table><thead><tr><th>#</th><th>${combined ? "Club" : "Team"}</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
+  $("tableBox").innerHTML = `<h2>${combined ? "Combined Log" : stream + " Log"}${S() ? " · " + esc(sName(S())) : ""}</h2>` + (rows.length ? `<table><thead><tr><th>#</th><th>${combined ? "Club" : "Team"}</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
     rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}${combined ? `<small class="ages">${r.ages.join(" · ")}</small>` : ""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</tbody></table>`
     + (combined ? `<p class="note" style="margin-top:8px">Points, goals and games from U11, U13, U15 and U17 added together for each club.</p>` : "")
     : `<p class="empty">No ${combined ? "" : stream + " "}teams yet. An admin can add teams on the Teams tab.</p>`);
@@ -283,7 +315,7 @@ function render() {
   // Teams + players
   $("teamBox").innerHTML = ts().length ? ts().map(t => {
     const ps = players.filter(p => p.teamId === t.id).sort((a,b) => (a.number ?? 99) - (b.number ?? 99));
-    return `<div class="team"><b>${esc(t.name)}</b>${isAdmin() ? ` <button class="x" data-delteam="${t.id}">Delete team</button>` : ""}
+    return `<div class="team"><b>${esc(t.name)}</b>${isAdmin() ? `${S() ? ` <button class="x" data-unseason="${t.id}">Remove from season</button>` : ""} <button class="x" data-delteam="${t.id}">Delete team</button>` : ""}
       ${ps.length ? `<ul>${ps.map(p => `<li>${p.number != null && p.number !== "" ? esc(p.number) + ". " : ""}${esc(p.name)}${isAdmin() ? ` <button class="x" data-delpl="${p.id}">Remove</button>` : ""}</li>`).join("")}</ul>` : `<div class="empty">No players yet.</div>`}</div>`;
   }).join("") : `<p class="empty">No ${stream} teams yet.</p>`;
 
@@ -296,6 +328,7 @@ function render() {
   });
 
   renderStaff();
+  renderSeasons();
 }
 
 // Admin actions
@@ -320,6 +353,7 @@ document.addEventListener("click", async e => {
         await b.commit();
       }
     }
+    if (d.unseason && confirm(`Remove ${tname(d.unseason)} from season ${sName(S())}? The team, its players and other seasons stay in the app.`)) await updateDoc(doc(db, "teams", d.unseason), { seasons: arrayRemove(S()) });
     if (d.delpl && confirm("Remove this player?")) await deleteDoc(doc(db, "players", d.delpl));
   } catch (err) { alert("Could not save: " + err.message); }
 });
@@ -327,8 +361,13 @@ document.addEventListener("click", async e => {
 $("teamForm").addEventListener("submit", async e => {
   e.preventDefault();
   const name = $("teamName").value.trim().replace(/\s+/g, " "), st = $("teamStream").value;
-  if (teams.some(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase())) return alert(`${name} is already in ${st}.`);
-  try { await addDoc(collection(db, "teams"), { name, stream: st, created: serverTimestamp() }); $("teamName").value = ""; }
+  const old = teams.find(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase());
+  if (old && inSeasonT(old)) return alert(`${name} is already in ${st}.`);
+  try {
+    if (old) await updateDoc(doc(db, "teams", old.id), { seasons: arrayUnion(S()) });   // team from an earlier season joins this one
+    else await addDoc(collection(db, "teams"), { name, stream: st, ...(S() ? { seasons: [S()] } : {}), created: serverTimestamp() });
+    $("teamName").value = "";
+  }
   catch (err) { alert("Could not save: " + err.message); }
 });
 $("plForm").addEventListener("submit", async e => {
@@ -341,14 +380,14 @@ $("plForm").addEventListener("submit", async e => {
 $("fxForm").addEventListener("submit", async e => {
   e.preventDefault();
   if ($("fxHome").value === $("fxAway").value) return alert("Pick two different teams.");
-  try { await addDoc(collection(db, "fixtures"), { stream, date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
+  try { await addDoc(collection(db, "fixtures"), { stream, ...(S() ? { season: S() } : {}), date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
   catch (err) { alert("Could not save: " + err.message); }
 });
 
 const loadXLSX = () => import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
 
 // ---------- Excel upload of teams ----------
-let pending = [];
+let pending = [], pendingJoins = [];
 const normStream = v => { const n = String(v ?? "").replace(/[^0-9]/g, ""); return STREAMS.includes("U" + n) ? "U" + n : null; };
 const cleanName = v => String(v ?? "").trim().replace(/\s+/g, " ");
 
@@ -363,7 +402,7 @@ function readTeamRows(rows) {
   }
   if (hr < 0) return { error: 'Could not find the column headings. Row 1 must have "Team" and "Age group" headings, as in the template.' };
 
-  const ok = [], skipped = [], problems = [], seen = new Set();
+  const ok = [], joins = [], skipped = [], problems = [], seen = new Set();
   for (let i = hr + 1; i < rows.length; i++) {
     const r = rows[i], name = cleanName(r[tc]), raw = String(r[ac] ?? "").trim(), rowNo = i + 1;
     if (!name && !raw) continue;
@@ -371,10 +410,13 @@ function readTeamRows(rows) {
     const st = normStream(raw);
     if (!st) { problems.push(`Row ${rowNo}: ${name} – age group "${raw || "blank"}" not recognised`); continue; }
     const key = st + "|" + name.toLowerCase();
-    if (seen.has(key) || teams.some(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase())) { skipped.push(`${name} (${st})`); continue; }
-    seen.add(key); ok.push({ name, stream: st });
+    const old = teams.find(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase());
+    if (seen.has(key) || (old && inSeasonT(old))) { skipped.push(`${name} (${st})`); continue; }
+    seen.add(key);
+    if (old) joins.push({ id: old.id, name, stream: st });   // team from an earlier season joins this one
+    else ok.push({ name, stream: st, ...(S() ? { seasons: [S()] } : {}) });
   }
-  return { ok, skipped, problems };
+  return { ok, joins, skipped, problems };
 }
 
 $("xlFile").addEventListener("change", async e => {
@@ -386,29 +428,32 @@ $("xlFile").addEventListener("change", async e => {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
     const res = readTeamRows(rows);
     if (res.error) { box.innerHTML = `<div class="preview msg">${esc(res.error)}</div>`; return; }
-    pending = res.ok;
+    pending = res.ok; pendingJoins = res.joins;
     const count = STREAMS.map(s => [s, pending.filter(t => t.stream === s).length]).filter(([, n]) => n).map(([s, n]) => `${s}: ${n}`).join(" · ");
     box.innerHTML = `<div class="preview">
-      ${pending.length ? `<b>${pending.length} team(s) ready to add</b> <span class="note">(${count})</span>` : `<b>No new teams to add.</b>`}
+      ${pending.length ? `<b>${pending.length} new team(s)</b> <span class="note">(${count})</span>` : ""}
+      ${res.joins.length ? `<p style="margin:6px 0 0"><b>${res.joins.length} team(s) from an earlier season to add to season ${esc(sName(S()))}</b>: ${res.joins.map(j => esc(`${j.name} (${j.stream})`)).join(", ")}</p>` : ""}
+      ${!pending.length && !res.joins.length ? `<b>No new teams to add.</b>` : ""}
       ${res.skipped.length ? `<p class="note">Skipped, already in the app or listed twice (${res.skipped.length}): ${res.skipped.map(esc).join(", ")}</p>` : ""}
       ${res.problems.length ? `<p class="msg" style="margin:6px 0 0">Rows not added (${res.problems.length}):</p><ul class="msg">${res.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
-      ${pending.length ? `<button id="xlGo">Add ${pending.length} team(s)</button> ` : ""}<button class="x" id="xlCancel">Cancel</button>
+      ${pending.length + res.joins.length ? `<button id="xlGo">Save ${pending.length + res.joins.length} team(s)</button> ` : ""}<button class="x" id="xlCancel">Cancel</button>
     </div>`;
   } catch (err) { box.innerHTML = `<div class="preview msg">Could not read that file. Save it as .xlsx and try again. (${esc(err.message)})</div>`; }
 });
 
 $("xlPreview").addEventListener("click", async e => {
-  if (e.target.id === "xlCancel") { pending = []; $("xlFile").value = ""; $("xlPreview").innerHTML = ""; }
-  if (e.target.id === "xlGo" && pending.length) {
+  if (e.target.id === "xlCancel") { pending = []; pendingJoins = []; $("xlFile").value = ""; $("xlPreview").innerHTML = ""; }
+  if (e.target.id === "xlGo" && pending.length + pendingJoins.length) {
     e.target.disabled = true; e.target.textContent = "Adding…";
     try {
-      for (let i = 0; i < pending.length; i += 400) {
+      const ops = [...pending.map(t => ["add", t]), ...pendingJoins.map(j => ["join", j])];
+      for (let i = 0; i < ops.length; i += 400) {
         const b = writeBatch(db);
-        pending.slice(i, i + 400).forEach(t => b.set(doc(collection(db, "teams")), { ...t, created: serverTimestamp() }));
+        ops.slice(i, i + 400).forEach(([k, x]) => k === "add" ? b.set(doc(collection(db, "teams")), { ...x, created: serverTimestamp() }) : b.update(doc(db, "teams", x.id), { seasons: arrayUnion(S()) }));
         await b.commit();
       }
-      $("xlPreview").innerHTML = `<div class="preview ok">${pending.length} team(s) added.</div>`;
-      pending = []; $("xlFile").value = "";
+      $("xlPreview").innerHTML = `<div class="preview ok">${ops.length} team(s) saved.</div>`;
+      pending = []; pendingJoins = []; $("xlFile").value = "";
     } catch (err) { e.target.disabled = false; e.target.textContent = "Try again"; alert("Could not save: " + err.message); }
   }
 });
@@ -436,7 +481,7 @@ function readDate(v) {
 }
 // Returns a whole number, "" for blank, or NaN if it is not a valid score
 const readGoals = v => { const s = String(v ?? "").trim(); if (s === "") return ""; return /^\d+$/.test(s) ? +s : NaN; };
-const teamId = (st, name) => (teams.find(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase()) || {}).id;
+const teamId = (st, name) => (teams.find(t => t.stream === st && inSeasonT(t) && (t.name || "").toLowerCase() === name.toLowerCase()) || {}).id;
 
 function readFixtureRows(rows) {
   let hr = -1, col = {};
@@ -461,7 +506,7 @@ function readFixtureRows(rows) {
     if (!st) { problems.push(`Row ${rowNo}: age group "${rawAge || "blank"}" not recognised`); continue; }
     if (!homeN || !awayN) { problems.push(`Row ${rowNo}: home team or away team missing`); continue; }
     const h = teamId(st, homeN), a = teamId(st, awayN);
-    if (!h || !a) { problems.push(`Row ${rowNo}: ${[!h && homeN, !a && awayN].filter(Boolean).join(" and ")} not found in ${st} teams`); continue; }
+    if (!h || !a) { problems.push(`Row ${rowNo}: ${[!h && homeN, !a && awayN].filter(Boolean).join(" and ")} not found in ${st} teams${S() ? " for season " + sName(S()) : ""}`); continue; }
     if (h === a) { problems.push(`Row ${rowNo}: ${homeN} cannot play itself`); continue; }
     const date = readDate(cell(r, "date"));
     if (date === null) { problems.push(`Row ${rowNo}: date "${cell(r, "date")}" not recognised (use 2026-11-28 or 28/11/2026)`); continue; }
@@ -474,9 +519,9 @@ function readFixtureRows(rows) {
     const score = hg !== "", label = `${st} ${homeN} v ${awayN}${date ? " (" + date + ")" : ""}`;
 
     // Match an existing fixture: same age group, teams and date; or the same game still without a date
-    let ex = fixtures.find(f => f.stream === st && f.home === h && f.away === a && (f.date || "") === date), upd = {};
+    let ex = fixtures.find(f => f.stream === st && inSeasonF(f) && f.home === h && f.away === a && (f.date || "") === date), upd = {};
     if (!ex && date) {
-      const undated = fixtures.filter(f => f.stream === st && f.home === h && f.away === a && !f.date);
+      const undated = fixtures.filter(f => f.stream === st && inSeasonF(f) && f.home === h && f.away === a && !f.date);
       if (undated.length === 1) { ex = undated[0]; upd.date = date; }
     }
     if (ex) {
@@ -484,7 +529,7 @@ function readFixtureRows(rows) {
       if (Object.keys(upd).length) updates.push({ id: ex.id, upd, label: label + (upd.played ? `: score ${hg}-${ag}` : ": date set") });
       else same++;
     } else {
-      adds.push({ data: { stream: st, date, home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
+      adds.push({ data: { stream: st, ...(S() ? { season: S() } : {}), date, home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
     }
   }
   return { adds, updates, problems, same };
@@ -530,12 +575,12 @@ $("fxXlPreview").addEventListener("click", async e => {
 $("fxExport").addEventListener("click", async () => {
   try {
     const XLSX = await loadXLSX();
-    const list = [...fixtures].sort((x, y) => STREAMS.indexOf(x.stream) - STREAMS.indexOf(y.stream) || (x.date || "9").localeCompare(y.date || "9"));
+    const list = fixtures.filter(inSeasonF).sort((x, y) => STREAMS.indexOf(x.stream) - STREAMS.indexOf(y.stream) || (x.date || "9").localeCompare(y.date || "9"));
     const ws = XLSX.utils.aoa_to_sheet([["Date","Age group","Home team","Away team","Home goals","Away goals"],
       ...list.map(f => [f.date || "", f.stream || "", tname(f.home), tname(f.away), f.played ? f.homeGoals : "", f.played ? f.awayGoals : ""])]);
     ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 28 }, { wch: 28 }, { wch: 11 }, { wch: 11 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
-    const d = new Date(); XLSX.writeFile(wb, `RJL fixtures ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`);
+    const d = new Date(); XLSX.writeFile(wb, `RJL fixtures ${S() ? "season " + sName(S()) + " " : ""}${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`);
   } catch (err) { alert("Could not download: " + err.message); }
 });
 
@@ -579,6 +624,53 @@ $("staffBox").addEventListener("click", async e => {
     if (d.reset) { await sendPasswordResetEmail(auth, d.reset); alert(`Password reset email sent to ${d.reset}.`); }
     if (d.unstaff && confirm(`Remove ${d.unstaff}? They will no longer be able to make changes.`)) await deleteDoc(doc(db, "staff", d.unstaff));
   } catch (err) { alert("Could not do that: " + err.message); }
+});
+
+// ---------- Seasons (only the main admin can start a season or change the current one) ----------
+function renderSeasons() {
+  if (!isOwner()) { $("seasonBox").innerHTML = ""; return; }
+  const first = !seasons.length, cur = seasons.find(x => x.id === currentSeason);
+  $("carryWrap").style.display = first || !cur ? "none" : "";
+  $("carryText").textContent = cur ? `Bring over the teams from season ${cur.name}` : "";
+  $("seasonNote").textContent = first
+    ? "No seasons yet. When you start the first season, all teams and fixtures already in the app go into it. Each season after that has its own fixtures and logs."
+    : "Each season has its own fixtures and logs. Past seasons stay in the app and anyone can view them with the season picker. The current season is the one the app opens on.";
+  $("seasonBox").innerHTML = seasons.map(x => {
+    const nf = fixtures.filter(f => f.season === x.id).length, nt = teams.filter(t => (t.seasons || []).includes(x.id)).length;
+    return `<div class="season"><div class="who"><b>Season ${esc(x.name)}</b>${x.id === currentSeason ? ' <span class="tag" style="display:inline-block;background:var(--blue);color:#fff;font-size:.75rem;padding:1px 8px;border-radius:9px;margin-left:4px">Current</span>' : ""}<span>${nt} team(s) · ${nf} fixture(s)</span></div>
+      ${x.id !== currentSeason ? `<button data-cur="${x.id}">Make current</button>` : ""}</div>`;
+  }).join("");
+}
+$("seasonForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = cleanName($("seasonName").value), m = $("seasonMsg"); m.className = "msg"; m.textContent = "";
+  if (seasons.some(x => (x.name || "").toLowerCase() === name.toLowerCase())) { m.textContent = `Season ${name} already exists.`; return; }
+  const first = !seasons.length, ref = doc(collection(db, "seasons")), id = ref.id;
+  const btn = e.target.querySelector("button"); btn.disabled = true;
+  try {
+    const ops = [];
+    if (first) {
+      teams.forEach(t => ops.push(b => b.update(doc(db, "teams", t.id), { seasons: arrayUnion(id) })));
+      fixtures.filter(f => !f.season).forEach(f => ops.push(b => b.update(doc(db, "fixtures", f.id), { season: id })));
+    } else if ($("carry").checked && currentSeason) {
+      teams.filter(t => (t.seasons || []).includes(currentSeason)).forEach(t => ops.push(b => b.update(doc(db, "teams", t.id), { seasons: arrayUnion(id) })));
+    }
+    for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i + 400).forEach(op => op(b)); await b.commit(); }
+    // The season and the switch to it are saved last, so the app never opens on a half-made season
+    const b = writeBatch(db);
+    b.set(ref, { name, created: serverTimestamp() });
+    b.set(doc(db, "settings", "league"), { currentSeason: id }, { merge: true });
+    await b.commit();
+    viewSeason = id; pickedSeason = false;
+    e.target.reset(); m.className = "msg ok"; m.textContent = `Season ${name} started and set as the current season.`;
+  } catch (err) { m.textContent = "Could not start the season: " + err.message; }
+  btn.disabled = false;
+});
+$("seasonBox").addEventListener("click", async e => {
+  const id = e.target.dataset.cur; if (!id || !isOwner()) return;
+  if (!confirm(`Make season ${sName(id)} the current season? The app will open on it for everyone.`)) return;
+  try { await setDoc(doc(db, "settings", "league"), { currentSeason: id }, { merge: true }); pickedSeason = false; viewSeason = id; render(); }
+  catch (err) { alert("Could not do that: " + err.message); }
 });
 
 // ---------- Login ----------
@@ -628,7 +720,12 @@ onAuthStateChanged(auth, async u => {
 let deferred;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; $("installBtn").hidden = false; });
 $("installBtn").addEventListener("click", async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $("installBtn").hidden = true; });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  // When a new version of the app is uploaded, reload once so it shows straight away
+  const hadOld = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadOld && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+}
 </script>
 </body>
 </html>
