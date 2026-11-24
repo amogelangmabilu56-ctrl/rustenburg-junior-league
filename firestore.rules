@@ -1,17 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Put the email address of every RJL admin login in this list.
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email in ['ADMIN_EMAIL_HERE'];
+
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function myEmail()  { return request.auth.token.email.lower(); }
+
+    // The main admin of the app. Must match OWNER_EMAIL in index.html.
+    function isOwner()  { return signedIn() && myEmail() == 'admin_email_here'; }
+
+    // Admins the main admin added on the Admins tab
+    function isStaff()  { return signedIn() && exists(/databases/$(database)/documents/staff/$(myEmail())); }
+
+    function canEdit()  { return isOwner() || isStaff(); }
+
+    match /teams/{id}    { allow read: if true; allow write: if canEdit(); }
+    match /players/{id}  { allow read: if true; allow write: if canEdit(); }
+    match /fixtures/{id} { allow read: if true; allow write: if canEdit(); }
+
+    // Only the main admin can add or remove admins. Each admin can check their own entry.
+    match /staff/{email} {
+      allow read: if isOwner() || (signedIn() && myEmail() == email);
+      allow write: if isOwner();
     }
 
-    match /teams/{id}    { allow read: if true; allow write: if isAdmin(); }
-    match /players/{id}  { allow read: if true; allow write: if isAdmin(); }
-    match /fixtures/{id} { allow read: if true; allow write: if isAdmin(); }
-
-    // Block everything else
     match /{document=**} { allow read, write: if false; }
   }
 }
