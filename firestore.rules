@@ -6,7 +6,7 @@ service cloud.firestore {
     function myEmail()  { return request.auth.token.email.lower(); }
 
     // The main admin of the app. Must match OWNER_EMAIL in index.html.
-    function isOwner()  { return signedIn() && myEmail() == 'admin_email_here'; }
+    function isOwner()  { return signedIn() && myEmail() == 'amogelangmabilu56@gmail.com'; }
 
     // Admins the main admin added on the Admins tab
     function isStaff()  { return signedIn() && exists(/databases/$(database)/documents/staff/$(myEmail())); }
