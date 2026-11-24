@@ -130,11 +130,12 @@ function renderStreams() {
   $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream ? "on" : ""}">${x}</button>`).join("");
   $("teamStream").value = stream;
 }
-$("streams").addEventListener("click", e => { if (e.target.dataset.s) { stream = e.target.dataset.s; render(); } });
+
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tname = id => (teams.find(t => t.id === id) || {}).name || "Unknown team";
 const isAdmin = () => document.body.classList.contains("admin");
+$("streams").addEventListener("click", e => { if (e.target.dataset.s) { stream = e.target.dataset.s; render(); } });
 
 // Tabs
 $("tabs").addEventListener("click", e => {
