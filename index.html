@@ -37,6 +37,8 @@ td.pts{font-weight:700;color:var(--navy)}
 tbody tr:first-child td{background:var(--lead)}
 tbody tr:first-child td:first-child{box-shadow:inset 4px 0 0 var(--blue)}
 .wrap{overflow-x:auto}
+#tableBox h2{margin:4px 0 10px;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
+small.ages{display:block;color:var(--muted);font-size:.78rem}
 .fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px;margin-bottom:8px}
 .fx .t{font-weight:600}.fx .t:last-of-type{text-align:right}
 .fx .sc{font:700 1.4rem "Barlow Condensed",sans-serif;background:var(--navy);color:#fff;padding:2px 12px;min-width:70px;text-align:center}
@@ -103,6 +105,14 @@ dialog img{width:70px;height:auto;justify-self:center}
         <select id="fxAway" required></select>
         <button>Add fixture</button>
       </form>
+      <b>Upload or update fixtures from Excel</b>
+      <p class="note">Columns: Date, Age group, Home team, Away team, Home goals, Away goals. Fill in both goals to record a score, or leave them blank for a game not played yet. A fixture already in the app (same age group, teams and date) is updated, not added twice. Teams must already be on the Teams tab.</p>
+      <form id="fxXlForm" onsubmit="return false">
+        <input type="file" id="fxXlFile" accept=".xlsx,.xls,.csv">
+        <a class="sec" href="rjl-fixtures-template.xlsx" download>Download template</a>
+        <button type="button" class="sec" id="fxExport">Download current fixtures</button>
+      </form>
+      <div id="fxXlPreview"></div>
     </div>
     <div id="fxBox"></div>
   </section>
@@ -163,7 +173,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 // The main admin of the app. Must match the email in firestore.rules.
-const OWNER_EMAIL = "ADMIN_EMAIL_HERE".toLowerCase();
+const OWNER_EMAIL = "amogelangmabilu56@gmail.com".toLowerCase();
 
 const firebaseConfig = {
   apiKey: "AIzaSyC-ir6GWKEIO7vezsmnBs11z9f7XBHCvtk",
@@ -192,13 +202,23 @@ const isOwner = () => document.body.classList.contains("owner");
 const hideCover = () => $("cover").classList.add("gone");
 setTimeout(hideCover, 3000);
 
+// The Combined log is only on the Table tab; Fixtures and Teams stay per age group
+let tab = "table", combined = false;
 function renderStreams() {
-  $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream ? "on" : ""}">${x}</button>`).join("");
+  const onTable = tab === "table";
+  $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream && !(onTable && combined) ? "on" : ""}">${x}</button>`).join("")
+    + (onTable ? `<button data-s="ALL" class="${combined ? "on" : ""}">Combined</button>` : "");
 }
-$("streams").addEventListener("click", e => { if (e.target.dataset.s) { stream = e.target.dataset.s; $("teamStream").value = stream; render(); } });
+$("streams").addEventListener("click", e => {
+  const s = e.target.dataset.s; if (!s) return;
+  if (s === "ALL") combined = true;
+  else { combined = false; stream = s; $("teamStream").value = stream; }
+  render();
+});
 
 // Tabs
 function showTab(t) {
+  tab = t; renderStreams();
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === t));
   $("streams").style.display = t === "staff" ? "none" : "";
@@ -210,9 +230,10 @@ onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, 
 onSnapshot(collection(db, "players"), s => { players = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
 onSnapshot(collection(db, "fixtures"), s => { fixtures = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.date||"").localeCompare(b.date||"")); render(); });
 
-function standings() {
+const byRank = (x,y) => y.pts - x.pts || (y.gf-y.ga) - (x.gf-x.ga) || y.gf - x.gf || x.name.localeCompare(y.name);
+function standings(st = stream) {
   const r = {};
-  ts().forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
+  teams.filter(t => t.stream === st).forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
   fixtures.filter(f => f.played && r[f.home] && r[f.away]).forEach(f => {
     const h = r[f.home], a = r[f.away], hg = +f.homeGoals, ag = +f.awayGoals;
     h.p++; a.p++; h.gf += hg; h.ga += ag; a.gf += ag; a.ga += hg;
@@ -220,16 +241,27 @@ function standings() {
     else if (hg < ag) { a.w++; h.l++; a.pts += 3; }
     else { h.d++; a.d++; h.pts++; a.pts++; }
   });
-  return Object.values(r).sort((x,y) => y.pts - x.pts || (y.gf-y.ga) - (x.gf-x.ga) || y.gf - x.gf || x.name.localeCompare(y.name));
+  return Object.values(r).sort(byRank);
+}
+// Combined log: each club's results from all age groups added together (clubs matched by name)
+function combinedStandings() {
+  const c = {};
+  STREAMS.forEach(st => standings(st).forEach(r => {
+    const k = r.name.trim().toLowerCase();
+    const x = c[k] ||= { name: r.name, ages: [], p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 };
+    x.ages.push(st); ["p","w","d","l","gf","ga","pts"].forEach(f => x[f] += r[f]);
+  }));
+  return Object.values(c).sort(byRank);
 }
 
 function render() {
   renderStreams();
   // Table
-  const rows = standings();
-  $("tableBox").innerHTML = rows.length ? `<table><thead><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
-    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</tbody></table>`
-    : `<p class="empty">No ${stream} teams yet. An admin can add teams on the Teams tab.</p>`;
+  const rows = combined ? combinedStandings() : standings();
+  $("tableBox").innerHTML = `<h2>${combined ? "Combined Log" : stream + " Log"}</h2>` + (rows.length ? `<table><thead><tr><th>#</th><th>${combined ? "Club" : "Team"}</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
+    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}${combined ? `<small class="ages">${r.ages.join(" · ")}</small>` : ""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</tbody></table>`
+    + (combined ? `<p class="note" style="margin-top:8px">Points, goals and games from U11, U13, U15 and U17 added together for each club.</p>` : "")
+    : `<p class="empty">No ${combined ? "" : stream + " "}teams yet. An admin can add teams on the Teams tab.</p>`);
 
   // Fixtures (keep any scores an admin is busy typing when live data refreshes)
   const typed = {};
@@ -313,6 +345,8 @@ $("fxForm").addEventListener("submit", async e => {
   catch (err) { alert("Could not save: " + err.message); }
 });
 
+const loadXLSX = () => import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+
 // ---------- Excel upload of teams ----------
 let pending = [];
 const normStream = v => { const n = String(v ?? "").replace(/[^0-9]/g, ""); return STREAMS.includes("U" + n) ? "U" + n : null; };
@@ -347,7 +381,7 @@ $("xlFile").addEventListener("change", async e => {
   const f = e.target.files[0]; pending = []; if (!f) return;
   const box = $("xlPreview"); box.innerHTML = `<div class="preview">Reading ${esc(f.name)}…</div>`;
   try {
-    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+    const XLSX = await loadXLSX();
     const wb = XLSX.read(await f.arrayBuffer());
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
     const res = readTeamRows(rows);
@@ -377,6 +411,132 @@ $("xlPreview").addEventListener("click", async e => {
       pending = []; $("xlFile").value = "";
     } catch (err) { e.target.disabled = false; e.target.textContent = "Try again"; alert("Could not save: " + err.message); }
   }
+});
+
+// ---------- Excel upload / update of fixtures ----------
+let fxPending = { adds: [], updates: [] };
+const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const pad = n => String(n).padStart(2, "0");
+function mkDate(y, m, d) {
+  y = +y; m = +m; d = +d; if (y < 100) y += 2000;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : null;
+}
+// Returns "YYYY-MM-DD", "" for no date / to be confirmed, or null if it can't be read
+function readDate(v) {
+  if (v === "" || v == null) return "";
+  if (typeof v === "number") { const t = new Date(Math.round((v - 25569) * 86400000)); return mkDate(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); }
+  if (v instanceof Date) return mkDate(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  const s = String(v).trim(); let m;
+  if (!s || /^(tbc|tba|to be confirmed)$/i.test(s)) return "";
+  if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return mkDate(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/))) return mkDate(m[3], m[2], m[1]); // day first, as in SA
+  if ((m = s.match(/^(\d{1,2})\s+([a-z]{3})[a-z]*\.?,?\s+(\d{2,4})$/i)) && MONTHS.includes(m[2].toLowerCase())) return mkDate(m[3], MONTHS.indexOf(m[2].toLowerCase()) + 1, m[1]);
+  return null;
+}
+// Returns a whole number, "" for blank, or NaN if it is not a valid score
+const readGoals = v => { const s = String(v ?? "").trim(); if (s === "") return ""; return /^\d+$/.test(s) ? +s : NaN; };
+const teamId = (st, name) => (teams.find(t => t.stream === st && (t.name || "").toLowerCase() === name.toLowerCase()) || {}).id;
+
+function readFixtureRows(rows) {
+  let hr = -1, col = {};
+  for (let i = 0; i < Math.min(rows.length, 10) && hr < 0; i++) {
+    const c = rows[i].map(x => String(x).trim().toLowerCase()), find = re => c.findIndex(re);
+    const k = {
+      hg: find(x => /home/.test(x) && /goal|score/.test(x)), ag: find(x => /away/.test(x) && /goal|score/.test(x)),
+      home: find(x => /home/.test(x) && !/goal|score/.test(x)), away: find(x => /away|visitor/.test(x) && !/goal|score/.test(x)),
+      date: find(x => /date/.test(x)), age: find(x => /age|under|group|stream|division|category/.test(x))
+    };
+    if (k.home >= 0 && k.away >= 0 && k.age >= 0) { hr = i; col = k; }
+  }
+  if (hr < 0) return { error: 'Could not find the column headings. Row 1 must have "Age group", "Home team" and "Away team" headings, as in the template.' };
+
+  const adds = [], updates = [], problems = [], seen = new Set(); let same = 0;
+  const cell = (r, k) => col[k] >= 0 ? r[col[k]] : "";
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i], rowNo = i + 1;
+    const homeN = cleanName(cell(r, "home")), awayN = cleanName(cell(r, "away")), rawAge = String(cell(r, "age") ?? "").trim();
+    if (!homeN && !awayN && !rawAge) continue;
+    const st = normStream(rawAge);
+    if (!st) { problems.push(`Row ${rowNo}: age group "${rawAge || "blank"}" not recognised`); continue; }
+    if (!homeN || !awayN) { problems.push(`Row ${rowNo}: home team or away team missing`); continue; }
+    const h = teamId(st, homeN), a = teamId(st, awayN);
+    if (!h || !a) { problems.push(`Row ${rowNo}: ${[!h && homeN, !a && awayN].filter(Boolean).join(" and ")} not found in ${st} teams`); continue; }
+    if (h === a) { problems.push(`Row ${rowNo}: ${homeN} cannot play itself`); continue; }
+    const date = readDate(cell(r, "date"));
+    if (date === null) { problems.push(`Row ${rowNo}: date "${cell(r, "date")}" not recognised (use 2026-11-28 or 28/11/2026)`); continue; }
+    const hg = readGoals(cell(r, "hg")), ag = readGoals(cell(r, "ag"));
+    if (Number.isNaN(hg) || Number.isNaN(ag)) { problems.push(`Row ${rowNo}: goals must be whole numbers`); continue; }
+    if ((hg === "") !== (ag === "")) { problems.push(`Row ${rowNo}: fill in both home and away goals, or leave both blank`); continue; }
+    const key = [st, h, a, date].join("|");
+    if (seen.has(key)) { problems.push(`Row ${rowNo}: same game listed twice in the sheet`); continue; }
+    seen.add(key);
+    const score = hg !== "", label = `${st} ${homeN} v ${awayN}${date ? " (" + date + ")" : ""}`;
+
+    // Match an existing fixture: same age group, teams and date; or the same game still without a date
+    let ex = fixtures.find(f => f.stream === st && f.home === h && f.away === a && (f.date || "") === date), upd = {};
+    if (!ex && date) {
+      const undated = fixtures.filter(f => f.stream === st && f.home === h && f.away === a && !f.date);
+      if (undated.length === 1) { ex = undated[0]; upd.date = date; }
+    }
+    if (ex) {
+      if (score && (!ex.played || +ex.homeGoals !== hg || +ex.awayGoals !== ag)) Object.assign(upd, { homeGoals: hg, awayGoals: ag, played: true });
+      if (Object.keys(upd).length) updates.push({ id: ex.id, upd, label: label + (upd.played ? `: score ${hg}-${ag}` : ": date set") });
+      else same++;
+    } else {
+      adds.push({ data: { stream: st, date, home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
+    }
+  }
+  return { adds, updates, problems, same };
+}
+
+const listSome = (arr, n = 12) => arr.slice(0, n).map(x => `<li>${esc(x)}</li>`).join("") + (arr.length > n ? `<li>and ${arr.length - n} more</li>` : "");
+$("fxXlFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; fxPending = { adds: [], updates: [] }; if (!f) return;
+  const box = $("fxXlPreview"); box.innerHTML = `<div class="preview">Reading ${esc(f.name)}…</div>`;
+  try {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.read(await f.arrayBuffer());
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true });
+    const res = readFixtureRows(rows);
+    if (res.error) { box.innerHTML = `<div class="preview msg">${esc(res.error)}</div>`; return; }
+    fxPending = res; const total = res.adds.length + res.updates.length;
+    box.innerHTML = `<div class="preview">
+      ${res.adds.length ? `<b>${res.adds.length} new fixture(s)</b><ul>${listSome(res.adds.map(x => x.label))}</ul>` : ""}
+      ${res.updates.length ? `<b>${res.updates.length} fixture(s) to update</b><ul>${listSome(res.updates.map(x => x.label))}</ul>` : ""}
+      ${!total ? `<b>Nothing new to add or update.</b>` : ""}
+      ${res.same ? `<p class="note">${res.same} fixture(s) already up to date.</p>` : ""}
+      ${res.problems.length ? `<p class="msg" style="margin:6px 0 0">Rows not used (${res.problems.length}):</p><ul class="msg">${listSome(res.problems, 30)}</ul>` : ""}
+      ${total ? `<button id="fxXlGo">Save ${total} change(s)</button> ` : ""}<button class="x" id="fxXlCancel">Cancel</button>
+    </div>`;
+  } catch (err) { box.innerHTML = `<div class="preview msg">Could not read that file. Save it as .xlsx and try again. (${esc(err.message)})</div>`; }
+});
+$("fxXlPreview").addEventListener("click", async e => {
+  if (e.target.id === "fxXlCancel") { fxPending = { adds: [], updates: [] }; $("fxXlFile").value = ""; $("fxXlPreview").innerHTML = ""; }
+  if (e.target.id === "fxXlGo") {
+    const ops = [...fxPending.adds.map(x => ["add", x]), ...fxPending.updates.map(x => ["upd", x])];
+    e.target.disabled = true; e.target.textContent = "Saving…";
+    try {
+      for (let i = 0; i < ops.length; i += 400) {
+        const b = writeBatch(db);
+        ops.slice(i, i + 400).forEach(([k, x]) => k === "add" ? b.set(doc(collection(db, "fixtures")), x.data) : b.update(doc(db, "fixtures", x.id), x.upd));
+        await b.commit();
+      }
+      $("fxXlPreview").innerHTML = `<div class="preview ok">${fxPending.adds.length} fixture(s) added, ${fxPending.updates.length} updated.</div>`;
+      fxPending = { adds: [], updates: [] }; $("fxXlFile").value = "";
+    } catch (err) { e.target.disabled = false; e.target.textContent = "Try again"; alert("Could not save: " + err.message); }
+  }
+});
+$("fxExport").addEventListener("click", async () => {
+  try {
+    const XLSX = await loadXLSX();
+    const list = [...fixtures].sort((x, y) => STREAMS.indexOf(x.stream) - STREAMS.indexOf(y.stream) || (x.date || "9").localeCompare(y.date || "9"));
+    const ws = XLSX.utils.aoa_to_sheet([["Date","Age group","Home team","Away team","Home goals","Away goals"],
+      ...list.map(f => [f.date || "", f.stream || "", tname(f.home), tname(f.away), f.played ? f.homeGoals : "", f.played ? f.awayGoals : ""])]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 28 }, { wch: 28 }, { wch: 11 }, { wch: 11 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
+    const d = new Date(); XLSX.writeFile(wb, `RJL fixtures ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`);
+  } catch (err) { alert("Could not download: " + err.message); }
 });
 
 // ---------- Admins (only the main admin sees this) ----------
@@ -457,7 +617,7 @@ onAuthStateChanged(auth, async u => {
     const s = await getDoc(doc(db, "staff", email));
     if (s.exists()) return setRole("admin", email);
     await signOut(auth);
-    alert("This login does not have admin access. Ask the main admin to add you.");
+    alert(`${email} does not have admin access. Ask the main admin to add you.`);
   } catch {
     setRole(null, email);
     $("who").textContent = "Could not check admin access. Check your internet connection and log in again.";
