@@ -1,7 +1,11 @@
-const C="rjl-v1";
-self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(["./","index.html","manifest.json","icon-192.png"])));self.skipWaiting()});
-self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x))))));
+const C="rjl-v2";
+const SDK=["https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"];
+// Files the app needs to open with no signal. Firebase scripts and fonts come from Google, so they are cached too.
+const OK_HOSTS=[location.host,"www.gstatic.com","fonts.googleapis.com","fonts.gstatic.com"];
+self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>Promise.all([c.addAll(["./","index.html","manifest.json","icon.svg","icon-192.png","icon-512.png"]),...SDK.map(u=>c.add(u).catch(()=>{}))])));self.skipWaiting()});
+self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>self.clients.claim())));
 self.addEventListener("fetch",e=>{
-  if(e.request.method!=="GET"||new URL(e.request.url).origin!==location.origin)return;
-  e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(C).then(x=>x.put(e.request,c));return r}).catch(()=>caches.match(e.request)));
+  const u=new URL(e.request.url);
+  if(e.request.method!=="GET"||!OK_HOSTS.includes(u.host))return;
+  e.respondWith(fetch(e.request).then(r=>{if(r.ok||r.type==="opaque"){const c=r.clone();caches.open(C).then(x=>x.put(e.request,c));}return r}).catch(()=>caches.match(e.request,{ignoreSearch:u.host===location.host})));
 });

@@ -25,7 +25,7 @@ th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line);font
 th{background:var(--pitch);color:var(--chalk);font-weight:600;font-size:.85rem}
 td:nth-child(2),th:nth-child(2){text-align:left}
 td.pts{font-weight:700}
-tr:first-child td{background:#fff8dc}
+tbody tr:first-child td{background:#fff8dc}
 .wrap{overflow-x:auto}
 .fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);padding:10px;margin-bottom:8px}
 .fx .t{font-weight:600}.fx .t:last-child{text-align:right}
@@ -107,7 +107,7 @@ dialog{border:0;padding:20px;max-width:340px;width:90%}dialog form{display:grid;
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, updateDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, deleteDoc, updateDoc, doc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -119,23 +119,23 @@ const firebaseConfig = {
   appId: "1:165556811109:web:661f049e87b4776ccc9d8c"
 };
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Keeps the last loaded table/fixtures/teams on the phone so the app still shows data offline
+const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 const auth = getAuth(app);
 
 let teams = [], players = [], fixtures = [];
 const STREAMS = ["U11","U13","U15","U17"]; let stream = "U11";
+const $ = id => document.getElementById(id);
 const ts = () => teams.filter(t => t.stream === stream);
 const fxs = () => fixtures.filter(f => f.stream === stream);
 function renderStreams() {
   $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream ? "on" : ""}">${x}</button>`).join("");
-  $("teamStream").value = stream;
 }
 
-const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tname = id => (teams.find(t => t.id === id) || {}).name || "Unknown team";
 const isAdmin = () => document.body.classList.contains("admin");
-$("streams").addEventListener("click", e => { if (e.target.dataset.s) { stream = e.target.dataset.s; render(); } });
+$("streams").addEventListener("click", e => { if (e.target.dataset.s) { stream = e.target.dataset.s; $("teamStream").value = stream; render(); } });
 
 // Tabs
 $("tabs").addEventListener("click", e => {
@@ -145,7 +145,7 @@ $("tabs").addEventListener("click", e => {
 });
 
 // Live data
-onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)); render(); });
+onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.name || "").localeCompare(b.name || "")); render(); });
 onSnapshot(collection(db, "players"), s => { players = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
 onSnapshot(collection(db, "fixtures"), s => { fixtures = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.date||"").localeCompare(b.date||"")); render(); });
 
@@ -166,11 +166,13 @@ function render() {
   renderStreams();
   // Table
   const rows = standings();
-  $("tableBox").innerHTML = rows.length ? `<table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr>` +
-    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</table>`
+  $("tableBox").innerHTML = rows.length ? `<table><thead><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>` +
+    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</tbody></table>`
     : `<p class="empty">No teams yet. An admin can add teams on the Teams tab.</p>`;
 
-  // Fixtures
+  // Fixtures (keep any scores an admin is busy typing when live data refreshes)
+  const typed = {};
+  document.querySelectorAll(".sbox input").forEach(i => { if (i.value !== i.defaultValue) typed[i.id] = i.value; });
   $("fxBox").innerHTML = fxs().length ? fxs().map(f => `
     <div class="fx">
       <span class="t">${esc(tname(f.home))}</span>
@@ -178,11 +180,12 @@ function render() {
       <span class="t">${esc(tname(f.away))}</span>
       <small>${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
       ${isAdmin() ? `<div class="sbox" style="grid-column:1/-1">
-        <input type="number" min="0" id="h_${f.id}" value="${f.homeGoals ?? ""}" aria-label="Home goals">
-        <input type="number" min="0" id="a_${f.id}" value="${f.awayGoals ?? ""}" aria-label="Away goals">
+        <input type="number" min="0" step="1" id="h_${f.id}" value="${esc(f.homeGoals)}" aria-label="Home goals">
+        <input type="number" min="0" step="1" id="a_${f.id}" value="${esc(f.awayGoals)}" aria-label="Away goals">
         <button data-save="${f.id}">Save score</button>
         <button class="x" data-delfx="${f.id}">Delete</button></div>` : ""}
     </div>`).join("") : `<p class="empty">No fixtures yet.</p>`;
+  Object.entries(typed).forEach(([id, v]) => { const el = $(id); if (el) el.value = v; });
 
   // Teams + players
   $("teamBox").innerHTML = ts().length ? ts().map(t => {
@@ -207,10 +210,21 @@ document.addEventListener("click", async e => {
     if (d.save) {
       const h = $("h_" + d.save).value, a = $("a_" + d.save).value;
       if (h === "" || a === "") return alert("Enter both scores.");
+      if (!Number.isInteger(+h) || !Number.isInteger(+a) || +h < 0 || +a < 0) return alert("Scores must be whole numbers, 0 or more.");
       await updateDoc(doc(db, "fixtures", d.save), { homeGoals: +h, awayGoals: +a, played: true });
     }
     if (d.delfx && confirm("Delete this fixture?")) await deleteDoc(doc(db, "fixtures", d.delfx));
-    if (d.delteam && confirm("Delete this team? Its players stay in the database.")) await deleteDoc(doc(db, "teams", d.delteam));
+    if (d.delteam) {
+      const tf = fixtures.filter(f => f.home === d.delteam || f.away === d.delteam);
+      const tp = players.filter(p => p.teamId === d.delteam);
+      if (confirm(`Delete ${tname(d.delteam)}? This also deletes its ${tp.length} player(s) and ${tf.length} fixture(s), and the table will change.`)) {
+        const b = writeBatch(db);
+        b.delete(doc(db, "teams", d.delteam));
+        tp.forEach(p => b.delete(doc(db, "players", p.id)));
+        tf.forEach(f => b.delete(doc(db, "fixtures", f.id)));
+        await b.commit();
+      }
+    }
     if (d.delpl && confirm("Remove this player?")) await deleteDoc(doc(db, "players", d.delpl));
   } catch (err) { alert("Could not save: " + err.message); }
 });
@@ -240,7 +254,12 @@ $("cancelLogin").addEventListener("click", () => $("dlg").close());
 $("loginForm").addEventListener("submit", async e => {
   e.preventDefault(); $("loginMsg").textContent = "";
   try { await signInWithEmailAndPassword(auth, $("em").value, $("pw").value); $("dlg").close(); $("pw").value = ""; }
-  catch { $("loginMsg").textContent = "Wrong email or password. Check both and try again."; }
+  catch (err) {
+    const c = err.code || "";
+    $("loginMsg").textContent = c === "auth/network-request-failed" ? "No internet connection. Connect and try again."
+      : c === "auth/too-many-requests" ? "Too many attempts. Wait a few minutes and try again."
+      : "Wrong email or password. Check both and try again.";
+  }
 });
 onAuthStateChanged(auth, u => {
   document.body.classList.toggle("admin", !!u);
