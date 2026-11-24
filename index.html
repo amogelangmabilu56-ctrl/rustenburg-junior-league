@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rustenburg Junior League</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--pitch:#0f3d2a;--grass:#1c6b46;--chalk:#f6f5ef;--line:#d9d8cc;--kit:#f2c230;--ink:#14231b;--red:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;font-family:Barlow,system-ui,sans-serif;background:var(--chalk);color:var(--ink);font-size:16px}
+header{background:var(--pitch);color:var(--chalk);padding:18px 16px 0;border-bottom:4px solid var(--kit)}
+h1{font:700 2rem/1 "Barlow Condensed",Impact,sans-serif;margin:0 0 4px;letter-spacing:.5px}
+header p{margin:0 0 12px;opacity:.8;font-size:.9rem}
+nav{display:flex;gap:4px;align-items:flex-end}
+nav button{flex:1;background:transparent;color:var(--chalk);border:0;padding:10px 4px;font:600 1rem Barlow,sans-serif;border-bottom:3px solid transparent;cursor:pointer}
+nav button.on{border-color:var(--kit);color:var(--kit)}
+main{max-width:760px;margin:0 auto;padding:16px}
+section{display:none}section.on{display:block}
+h2{font:700 1.5rem "Barlow Condensed",Impact,sans-serif;margin:20px 0 8px}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line)}
+th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{background:var(--pitch);color:var(--chalk);font-weight:600;font-size:.85rem}
+td:nth-child(2),th:nth-child(2){text-align:left}
+td.pts{font-weight:700}
+tr:first-child td{background:#fff8dc}
+.wrap{overflow-x:auto}
+.fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);padding:10px;margin-bottom:8px}
+.fx .t{font-weight:600}.fx .t:last-child{text-align:right}
+.fx .sc{font:700 1.4rem "Barlow Condensed",sans-serif;background:var(--pitch);color:var(--kit);padding:2px 12px;min-width:70px;text-align:center}
+.fx .sc.up{background:var(--line);color:var(--ink);font-size:1rem}
+.fx small{grid-column:1/-1;color:#5b6b61}
+.team{background:#fff;border:1px solid var(--line);padding:10px 12px;margin-bottom:8px}
+.team b{font:700 1.2rem "Barlow Condensed",sans-serif}
+.team ul{margin:6px 0 0;padding-left:18px;color:#3b4a41}
+.empty{color:#5b6b61;padding:12px 0}
+button.pri,.admin-only button{background:var(--pitch);color:#fff;border:0;padding:9px 14px;font:600 .95rem Barlow,sans-serif;cursor:pointer}
+button.x{background:transparent;color:var(--red);border:0;cursor:pointer;font-weight:600}
+input,select{font:inherit;padding:8px;border:1px solid var(--line);background:#fff;max-width:100%}
+:focus-visible{outline:3px solid var(--kit);outline-offset:2px}
+.admin-only{display:none;background:#eaf1ec;border:1px solid var(--line);padding:12px;margin:12px 0}
+body.admin .admin-only{display:block}
+.admin-only form{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.sbox input{width:52px;text-align:center}
+.bar{display:flex;justify-content:flex-end;gap:8px;padding:8px 16px;max-width:760px;margin:0 auto}
+dialog{border:0;padding:20px;max-width:340px;width:90%}dialog form{display:grid;gap:10px}
+.msg{color:var(--red);font-size:.9rem;min-height:1.2em}
+</style>
+</head>
+<body>
+<header>
+  <h1>Rustenburg Junior League</h1>
+  <p>Table, fixtures and teams</p>
+  <nav id="tabs">
+    <button data-t="table" class="on">Table</button>
+    <button data-t="fixtures">Fixtures</button>
+    <button data-t="teams">Teams</button>
+  </nav>
+</header>
+<div class="bar"><span id="who"></span><button class="pri" id="loginBtn">Admin login</button></div>
+<main>
+  <section id="table" class="on"><div class="wrap" id="tableBox"></div></section>
+
+  <section id="fixtures">
+    <div class="admin-only">
+      <b>Add fixture</b>
+      <form id="fxForm">
+        <input type="date" id="fxDate" required>
+        <select id="fxHome" required></select>
+        <select id="fxAway" required></select>
+        <button>Add fixture</button>
+      </form>
+    </div>
+    <div id="fxBox"></div>
+  </section>
+
+  <section id="teams">
+    <div class="admin-only">
+      <b>Add team</b>
+      <form id="teamForm"><input id="teamName" placeholder="Team name" required><button>Add team</button></form>
+      <b>Add player</b>
+      <form id="plForm">
+        <input id="plName" placeholder="Player name" required>
+        <input id="plNo" type="number" min="0" max="99" placeholder="No." style="width:70px">
+        <select id="plTeam" required></select>
+        <button>Add player</button>
+      </form>
+    </div>
+    <div id="teamBox"></div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form id="loginForm" method="dialog">
+    <b>Admin login</b>
+    <input type="email" id="em" placeholder="Email" required autocomplete="username">
+    <input type="password" id="pw" placeholder="Password" required autocomplete="current-password">
+    <div class="msg" id="loginMsg"></div>
+    <button class="pri" type="submit">Log in</button>
+    <button class="x" type="button" id="cancelLogin">Cancel</button>
+  </form>
+</dialog>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, deleteDoc, updateDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC-ir6GWKEIO7vezsmnBs11z9f7XBHCvtk",
+  authDomain: "rustenburg-juniour-league.firebaseapp.com",
+  projectId: "rustenburg-juniour-league",
+  storageBucket: "rustenburg-juniour-league.firebasestorage.app",
+  messagingSenderId: "165556811109",
+  appId: "1:165556811109:web:661f049e87b4776ccc9d8c"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+let teams = [], players = [], fixtures = [];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tname = id => (teams.find(t => t.id === id) || {}).name || "Unknown team";
+const isAdmin = () => document.body.classList.contains("admin");
+
+// Tabs
+$("tabs").addEventListener("click", e => {
+  const t = e.target.dataset.t; if (!t) return;
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b === e.target));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === t));
+});
+
+// Live data
+onSnapshot(collection(db, "teams"), s => { teams = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)); render(); });
+onSnapshot(collection(db, "players"), s => { players = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
+onSnapshot(collection(db, "fixtures"), s => { fixtures = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.date||"").localeCompare(b.date||"")); render(); });
+
+function standings() {
+  const r = {};
+  teams.forEach(t => r[t.id] = { name: t.name, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
+  fixtures.filter(f => f.played && r[f.home] && r[f.away]).forEach(f => {
+    const h = r[f.home], a = r[f.away], hg = +f.homeGoals, ag = +f.awayGoals;
+    h.p++; a.p++; h.gf += hg; h.ga += ag; a.gf += ag; a.ga += hg;
+    if (hg > ag) { h.w++; a.l++; h.pts += 3; }
+    else if (hg < ag) { a.w++; h.l++; a.pts += 3; }
+    else { h.d++; a.d++; h.pts++; a.pts++; }
+  });
+  return Object.values(r).sort((x,y) => y.pts - x.pts || (y.gf-y.ga) - (x.gf-x.ga) || y.gf - x.gf || x.name.localeCompare(y.name));
+}
+
+function render() {
+  // Table
+  const rows = standings();
+  $("tableBox").innerHTML = rows.length ? `<table><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr>` +
+    rows.map((r,i) => `<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gf-r.ga}</td><td class="pts">${r.pts}</td></tr>`).join("") + `</table>`
+    : `<p class="empty">No teams yet. An admin can add teams on the Teams tab.</p>`;
+
+  // Fixtures
+  $("fxBox").innerHTML = fixtures.length ? fixtures.map(f => `
+    <div class="fx">
+      <span class="t">${esc(tname(f.home))}</span>
+      ${f.played ? `<span class="sc">${f.homeGoals} - ${f.awayGoals}</span>` : `<span class="sc up">vs</span>`}
+      <span class="t">${esc(tname(f.away))}</span>
+      <small>${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
+      ${isAdmin() ? `<div class="sbox" style="grid-column:1/-1">
+        <input type="number" min="0" id="h_${f.id}" value="${f.homeGoals ?? ""}" aria-label="Home goals">
+        <input type="number" min="0" id="a_${f.id}" value="${f.awayGoals ?? ""}" aria-label="Away goals">
+        <button data-save="${f.id}">Save score</button>
+        <button class="x" data-delfx="${f.id}">Delete</button></div>` : ""}
+    </div>`).join("") : `<p class="empty">No fixtures yet.</p>`;
+
+  // Teams + players
+  $("teamBox").innerHTML = teams.length ? teams.map(t => {
+    const ps = players.filter(p => p.teamId === t.id).sort((a,b) => (a.number ?? 99) - (b.number ?? 99));
+    return `<div class="team"><b>${esc(t.name)}</b>${isAdmin() ? ` <button class="x" data-delteam="${t.id}">Delete team</button>` : ""}
+      ${ps.length ? `<ul>${ps.map(p => `<li>${p.number != null && p.number !== "" ? esc(p.number) + ". " : ""}${esc(p.name)}${isAdmin() ? ` <button class="x" data-delpl="${p.id}">Remove</button>` : ""}</li>`).join("")}</ul>` : `<div class="empty">No players yet.</div>`}</div>`;
+  }).join("") : `<p class="empty">No teams yet.</p>`;
+
+  // Dropdowns (keep selection)
+  const opts = teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  [["fxHome","Home team"],["fxAway","Away team"],["plTeam","Team"]].forEach(([id, label]) => {
+    const el = $(id), v = el.value;
+    el.innerHTML = `<option value="" disabled selected>${label}</option>` + opts;
+    if (v) el.value = v;
+  });
+}
+
+// Admin actions
+document.addEventListener("click", async e => {
+  const d = e.target.dataset; if (!isAdmin()) return;
+  try {
+    if (d.save) {
+      const h = $("h_" + d.save).value, a = $("a_" + d.save).value;
+      if (h === "" || a === "") return alert("Enter both scores.");
+      await updateDoc(doc(db, "fixtures", d.save), { homeGoals: +h, awayGoals: +a, played: true });
+    }
+    if (d.delfx && confirm("Delete this fixture?")) await deleteDoc(doc(db, "fixtures", d.delfx));
+    if (d.delteam && confirm("Delete this team? Its players stay in the database.")) await deleteDoc(doc(db, "teams", d.delteam));
+    if (d.delpl && confirm("Remove this player?")) await deleteDoc(doc(db, "players", d.delpl));
+  } catch (err) { alert("Could not save: " + err.message); }
+});
+
+$("teamForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try { await addDoc(collection(db, "teams"), { name: $("teamName").value.trim(), created: serverTimestamp() }); e.target.reset(); }
+  catch (err) { alert("Could not save: " + err.message); }
+});
+$("plForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await addDoc(collection(db, "players"), { name: $("plName").value.trim(), number: $("plNo").value === "" ? null : +$("plNo").value, teamId: $("plTeam").value });
+    $("plName").value = ""; $("plNo").value = "";
+  } catch (err) { alert("Could not save: " + err.message); }
+});
+$("fxForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if ($("fxHome").value === $("fxAway").value) return alert("Pick two different teams.");
+  try { await addDoc(collection(db, "fixtures"), { date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
+  catch (err) { alert("Could not save: " + err.message); }
+});
+
+// Login
+$("loginBtn").addEventListener("click", () => isAdmin() ? signOut(auth) : $("dlg").showModal());
+$("cancelLogin").addEventListener("click", () => $("dlg").close());
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault(); $("loginMsg").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("em").value, $("pw").value); $("dlg").close(); $("pw").value = ""; }
+  catch { $("loginMsg").textContent = "Wrong email or password. Check both and try again."; }
+});
+onAuthStateChanged(auth, u => {
+  document.body.classList.toggle("admin", !!u);
+  $("who").textContent = u ? "Admin: " + u.email : "";
+  $("loginBtn").textContent = u ? "Log out" : "Admin login";
+  render();
+});
+</script>
+</body>
+</html>
