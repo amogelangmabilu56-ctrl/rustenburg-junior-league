@@ -1,4 +1,4 @@
-const C="rjl-v8";
+const C="rjl-v9";
 const SDK=["https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"];
 const FILES=["./","index.html","manifest.json","logo.png","favicon.png","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png","rjl-teams-template.xlsx","rjl-fixtures-template.xlsx"];
 // Files the app needs to open with no signal. Firebase scripts and fonts come from Google, so they are cached too.

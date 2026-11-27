@@ -112,7 +112,7 @@ dialog img{width:70px;height:auto;justify-self:center}
         <button>Add fixture</button>
       </form>
       <b>Upload or update fixtures from Excel</b>
-      <p class="note">Columns: Date, Age group, Home team, Away team, Home goals, Away goals. Fill in both goals to record a score, or leave them blank for a game not played yet. A fixture already in the app (same age group, teams and date) is updated, not added twice. Teams must already be on the Teams tab.</p>
+      <p class="note">Use the template: one row per club match, with Week No, Date, Home team, Away team, and the Home goals and Away goals for U11, U13, U15 and U17. Each row creates the game in every age group where both clubs have a team. Fill in both goals to record a score, or leave them blank for a game not played yet. Uploading again updates the same games, it does not add them twice. Team names must match the Teams tab.</p>
       <form id="fxXlForm" onsubmit="return false">
         <input type="file" id="fxXlFile" accept=".xlsx,.xls,.csv">
         <a class="sec" href="rjl-fixtures-template.xlsx" download>Download template</a>
@@ -303,7 +303,7 @@ function render() {
       <span class="t">${esc(tname(f.home))}</span>
       ${f.played ? `<span class="sc">${esc(f.homeGoals)} - ${esc(f.awayGoals)}</span>` : `<span class="sc up">vs</span>`}
       <span class="t">${esc(tname(f.away))}</span>
-      <small>${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
+      <small>${f.week ? "Week " + esc(f.week) + " · " : ""}${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
       ${isAdmin() ? `<div class="sbox" style="grid-column:1/-1">
         <input type="number" min="0" step="1" id="h_${f.id}" value="${esc(f.homeGoals)}" aria-label="Home goals">
         <input type="number" min="0" step="1" id="a_${f.id}" value="${esc(f.awayGoals)}" aria-label="Away goals">
@@ -483,41 +483,43 @@ function readDate(v) {
 const readGoals = v => { const s = String(v ?? "").trim(); if (s === "") return ""; return /^\d+$/.test(s) ? +s : NaN; };
 const teamId = (st, name) => (teams.find(t => t.stream === st && inSeasonT(t) && (t.name || "").toLowerCase() === name.toLowerCase()) || {}).id;
 
+// Reads two layouts:
+//  1. League layout (the template): one row per club match, with Home goals / Away goals columns under U11, U13, U15 and U17
+//  2. One row per fixture, with an "Age group" column
 function readFixtureRows(rows) {
-  let hr = -1, col = {};
+  let hr = -1, col = {}, pairs = null;
   for (let i = 0; i < Math.min(rows.length, 10) && hr < 0; i++) {
     const c = rows[i].map(x => String(x).trim().toLowerCase()), find = re => c.findIndex(re);
     const k = {
       hg: find(x => /home/.test(x) && /goal|score/.test(x)), ag: find(x => /away/.test(x) && /goal|score/.test(x)),
       home: find(x => /home/.test(x) && !/goal|score/.test(x)), away: find(x => /away|visitor/.test(x) && !/goal|score/.test(x)),
-      date: find(x => /date/.test(x)), age: find(x => /age|under|group|stream|division|category/.test(x))
+      date: find(x => /date/.test(x)), age: find(x => /age|under|group|stream|division|category/.test(x)), week: find(x => /week|round|^wk/.test(x))
     };
-    if (k.home >= 0 && k.away >= 0 && k.age >= 0) { hr = i; col = k; }
+    if (k.home < 0 || k.away < 0) continue;
+    if (k.age >= 0) { hr = i; col = k; break; }
+    // Goal columns grouped by age group: the age group is in the same heading ("U11 Home goals") or in the row above (merged U11 / U13 ... headings)
+    const prev = i > 0 ? rows[i - 1] : [], ps = {};
+    c.forEach((x, j) => {
+      if (!/goal|score/.test(x)) return;
+      let st = normStream(rows[i][j]);
+      if (!st) for (let q = j; q >= 0; q--) { const v = String(prev[q] ?? "").trim(); if (v) { st = normStream(v); break; } }
+      const side = /away/.test(x) ? "ag" : /home/.test(x) ? "hg" : null;
+      if (st && side) (ps[st] ||= {})[side] = j;
+    });
+    const list = STREAMS.filter(st => ps[st] && ps[st].hg != null && ps[st].ag != null).map(st => ({ st, ...ps[st] }));
+    if (list.length) { hr = i; col = k; pairs = list; }
   }
-  if (hr < 0) return { error: 'Could not find the column headings. Row 1 must have "Age group", "Home team" and "Away team" headings, as in the template.' };
+  if (hr < 0) return { error: 'Could not find the column headings. Use the template: Week No, Date, Home team, Away team, then Home goals and Away goals under U11, U13, U15 and U17.' };
 
-  const adds = [], updates = [], problems = [], seen = new Set(); let same = 0;
+  const adds = [], updates = [], problems = [], skippedAges = [], seen = new Set(); let same = 0;
   const cell = (r, k) => col[k] >= 0 ? r[col[k]] : "";
-  for (let i = hr + 1; i < rows.length; i++) {
-    const r = rows[i], rowNo = i + 1;
-    const homeN = cleanName(cell(r, "home")), awayN = cleanName(cell(r, "away")), rawAge = String(cell(r, "age") ?? "").trim();
-    if (!homeN && !awayN && !rawAge) continue;
-    const st = normStream(rawAge);
-    if (!st) { problems.push(`Row ${rowNo}: age group "${rawAge || "blank"}" not recognised`); continue; }
-    if (!homeN || !awayN) { problems.push(`Row ${rowNo}: home team or away team missing`); continue; }
-    const h = teamId(st, homeN), a = teamId(st, awayN);
-    if (!h || !a) { problems.push(`Row ${rowNo}: ${[!h && homeN, !a && awayN].filter(Boolean).join(" and ")} not found in ${st} teams${S() ? " for season " + sName(S()) : ""}`); continue; }
-    if (h === a) { problems.push(`Row ${rowNo}: ${homeN} cannot play itself`); continue; }
-    const date = readDate(cell(r, "date"));
-    if (date === null) { problems.push(`Row ${rowNo}: date "${cell(r, "date")}" not recognised (use 2026-11-28 or 28/11/2026)`); continue; }
-    const hg = readGoals(cell(r, "hg")), ag = readGoals(cell(r, "ag"));
-    if (Number.isNaN(hg) || Number.isNaN(ag)) { problems.push(`Row ${rowNo}: goals must be whole numbers`); continue; }
-    if ((hg === "") !== (ag === "")) { problems.push(`Row ${rowNo}: fill in both home and away goals, or leave both blank`); continue; }
+
+  // Adds or updates one fixture. Returns false if the row has a problem.
+  function one(rowNo, st, homeN, awayN, h, a, date, week, hg, ag) {
     const key = [st, h, a, date].join("|");
-    if (seen.has(key)) { problems.push(`Row ${rowNo}: same game listed twice in the sheet`); continue; }
+    if (seen.has(key)) { problems.push(`Row ${rowNo}: ${st} ${homeN} v ${awayN} is listed twice in the sheet`); return; }
     seen.add(key);
     const score = hg !== "", label = `${st} ${homeN} v ${awayN}${date ? " (" + date + ")" : ""}`;
-
     // Match an existing fixture: same age group, teams and date; or the same game still without a date
     let ex = fixtures.find(f => f.stream === st && inSeasonF(f) && f.home === h && f.away === a && (f.date || "") === date), upd = {};
     if (!ex && date) {
@@ -526,13 +528,43 @@ function readFixtureRows(rows) {
     }
     if (ex) {
       if (score && (!ex.played || +ex.homeGoals !== hg || +ex.awayGoals !== ag)) Object.assign(upd, { homeGoals: hg, awayGoals: ag, played: true });
-      if (Object.keys(upd).length) updates.push({ id: ex.id, upd, label: label + (upd.played ? `: score ${hg}-${ag}` : ": date set") });
+      if (week && String(ex.week || "") !== week) upd.week = week;
+      if (Object.keys(upd).length) updates.push({ id: ex.id, upd, label: label + (upd.played ? `: score ${hg}-${ag}` : upd.date ? ": date set" : ": week set") });
       else same++;
     } else {
-      adds.push({ data: { stream: st, ...(S() ? { season: S() } : {}), date, home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
+      adds.push({ data: { stream: st, ...(S() ? { season: S() } : {}), date, ...(week ? { week } : {}), home: h, away: a, played: score, ...(score ? { homeGoals: hg, awayGoals: ag } : {}) }, label: label + (score ? `: ${hg}-${ag}` : "") });
     }
   }
-  return { adds, updates, problems, same };
+
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i], rowNo = i + 1;
+    const homeN = cleanName(cell(r, "home")), awayN = cleanName(cell(r, "away")), rawAge = pairs ? "" : String(cell(r, "age") ?? "").trim();
+    if (!homeN && !awayN && !rawAge) continue;
+    if (!homeN || !awayN) { problems.push(`Row ${rowNo}: home team or away team missing`); continue; }
+    if (homeN.toLowerCase() === awayN.toLowerCase()) { problems.push(`Row ${rowNo}: ${homeN} cannot play itself`); continue; }
+    const date = readDate(cell(r, "date"));
+    if (date === null) { problems.push(`Row ${rowNo}: date "${cell(r, "date")}" not recognised (use 2026-11-28 or 28/11/2026)`); continue; }
+    const week = cleanName(cell(r, "week"));
+    const games = pairs ? pairs.map(p => ({ st: p.st, hg: r[p.hg], ag: r[p.ag] })) : [{ st: normStream(rawAge), hg: cell(r, "hg"), ag: cell(r, "ag") }];
+    if (!pairs && !games[0].st) { problems.push(`Row ${rowNo}: age group "${rawAge || "blank"}" not recognised`); continue; }
+    let made = 0; const rowSkipped = [], before = problems.length;
+    for (const g of games) {
+      const hg = readGoals(g.hg), ag = readGoals(g.ag);
+      if (Number.isNaN(hg) || Number.isNaN(ag)) { problems.push(`Row ${rowNo}: ${g.st} goals must be whole numbers`); continue; }
+      if ((hg === "") !== (ag === "")) { problems.push(`Row ${rowNo}: ${g.st} – fill in both home and away goals, or leave both blank`); continue; }
+      const h = teamId(g.st, homeN), a = teamId(g.st, awayN);
+      if (!h || !a) {
+        const missing = [!h && homeN, !a && awayN].filter(Boolean).join(" and ");
+        // In the league layout an age group is skipped when a club has no team in it, unless a score was entered for it
+        if (pairs && hg === "") { rowSkipped.push(`Row ${rowNo}: no ${g.st} game – ${missing} ${!h && !a ? "have" : "has"} no ${g.st} team`); continue; }
+        problems.push(`Row ${rowNo}: ${missing} not found in ${g.st} teams${S() ? " for season " + sName(S()) : ""}`); continue;
+      }
+      one(rowNo, g.st, homeN, awayN, h, a, date, week, hg, ag); made++;
+    }
+    if (pairs && !made && problems.length === before) problems.push(`Row ${rowNo}: ${homeN} and ${awayN} are not teams in the same age group – check the spelling against the Teams tab`);
+    else skippedAges.push(...rowSkipped);
+  }
+  return { adds, updates, problems, same, skippedAges };
 }
 
 const listSome = (arr, n = 12) => arr.slice(0, n).map(x => `<li>${esc(x)}</li>`).join("") + (arr.length > n ? `<li>and ${arr.length - n} more</li>` : "");
@@ -551,6 +583,7 @@ $("fxXlFile").addEventListener("change", async e => {
       ${res.updates.length ? `<b>${res.updates.length} fixture(s) to update</b><ul>${listSome(res.updates.map(x => x.label))}</ul>` : ""}
       ${!total ? `<b>Nothing new to add or update.</b>` : ""}
       ${res.same ? `<p class="note">${res.same} fixture(s) already up to date.</p>` : ""}
+      ${res.skippedAges && res.skippedAges.length ? `<details class="note" style="margin:6px 0"><summary>${res.skippedAges.length} age group game(s) left out because a club has no team in that age group</summary><ul>${res.skippedAges.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}
       ${res.problems.length ? `<p class="msg" style="margin:6px 0 0">Rows not used (${res.problems.length}):</p><ul class="msg">${listSome(res.problems, 30)}</ul>` : ""}
       ${total ? `<button id="fxXlGo">Save ${total} change(s)</button> ` : ""}<button class="x" id="fxXlCancel">Cancel</button>
     </div>`;
@@ -575,10 +608,19 @@ $("fxXlPreview").addEventListener("click", async e => {
 $("fxExport").addEventListener("click", async () => {
   try {
     const XLSX = await loadXLSX();
-    const list = fixtures.filter(inSeasonF).sort((x, y) => STREAMS.indexOf(x.stream) - STREAMS.indexOf(y.stream) || (x.date || "9").localeCompare(y.date || "9"));
-    const ws = XLSX.utils.aoa_to_sheet([["Date","Age group","Home team","Away team","Home goals","Away goals"],
-      ...list.map(f => [f.date || "", f.stream || "", tname(f.home), tname(f.away), f.played ? f.homeGoals : "", f.played ? f.awayGoals : ""])]);
-    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 28 }, { wch: 28 }, { wch: 11 }, { wch: 11 }];
+    // One row per club match (same date, week and clubs), with the score for each age group
+    const groups = new Map();
+    fixtures.filter(inSeasonF).forEach(f => {
+      const hn = tname(f.home), an = tname(f.away), k = [f.date || "", f.week || "", hn.toLowerCase(), an.toLowerCase()].join("|");
+      if (!groups.has(k)) groups.set(k, { week: f.week || "", date: f.date || "", home: hn, away: an, sc: {} });
+      groups.get(k).sc[f.stream] = f.played ? [f.homeGoals, f.awayGoals] : ["", ""];
+    });
+    const list = [...groups.values()].sort((x, y) => (x.date || "9").localeCompare(y.date || "9") || String(x.week).localeCompare(String(y.week), undefined, { numeric: true }) || x.home.localeCompare(y.home));
+    const head1 = ["", "", "", ""], head2 = ["WEEK NO", "Date", "Home team", "Away team"];
+    STREAMS.forEach(st => { head1.push(st, ""); head2.push("Home goals", "Away goals"); });
+    const ws = XLSX.utils.aoa_to_sheet([head1, head2, ...list.map(g => [g.week, g.date, g.home, g.away, ...STREAMS.flatMap(st => g.sc[st] || ["", ""])])]);
+    ws["!merges"] = STREAMS.map((st, i) => ({ s: { r: 0, c: 4 + i * 2 }, e: { r: 0, c: 5 + i * 2 } }));
+    ws["!cols"] = [{ wch: 10 }, { wch: 12 }, { wch: 28 }, { wch: 28 }, ...STREAMS.flatMap(() => [{ wch: 11 }, { wch: 11 }])];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Fixtures");
     const d = new Date(); XLSX.writeFile(wb, `RJL fixtures ${S() ? "season " + sName(S()) + " " : ""}${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`);
   } catch (err) { alert("Could not download: " + err.message); }
