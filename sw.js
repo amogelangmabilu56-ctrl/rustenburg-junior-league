@@ -1,8 +1,8 @@
-const C="rjl-v11";
+const C="rjl-v12";
 const SDK=["https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js","https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"];
 const FILES=["./","index.html","manifest.json","logo.png","favicon.png","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png","rjl-teams-template.xlsx","rjl-fixtures-template.xlsx","privacy.html"];
 // Files the app needs to open with no signal. Firebase scripts and fonts come from Google, so they are cached too.
-const OK_HOSTS=[location.host,"www.gstatic.com","fonts.googleapis.com","fonts.gstatic.com","cdn.sheetjs.com"];
+const OK_HOSTS=[location.host,"www.gstatic.com","fonts.googleapis.com","fonts.gstatic.com","cdn.sheetjs.com","cdn.jsdelivr.net"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>Promise.all([c.addAll(FILES),...SDK.map(u=>c.add(u).catch(()=>{}))])));self.skipWaiting()});
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))).then(()=>self.clients.claim())));
 self.addEventListener("fetch",e=>{

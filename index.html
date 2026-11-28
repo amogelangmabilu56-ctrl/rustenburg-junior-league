@@ -75,6 +75,24 @@ dialog img{width:70px;height:auto;justify-self:center}
 .season .who{flex:1;min-width:160px}.season .who span{display:block;color:var(--muted);font-size:.9rem}
 .season button{background:transparent;border:0;color:var(--blue);cursor:pointer;font:600 .95rem Barlow,sans-serif;padding:4px 6px}
 .owner-box label{display:flex;align-items:center;gap:6px;font-size:.95rem}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:var(--navy);color:#fff;padding:12px 14px}
+.tile b{display:block;font:800 2rem/1.1 "Barlow Condensed",sans-serif}
+.tile span{font-size:.85rem;color:#c9d4e6}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.dcard{background:#fff;border:1px solid var(--line);padding:12px 14px}
+.dcard h3{margin:0 0 8px;font:700 1.15rem "Barlow Condensed",sans-serif;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
+.dcard.warn{border-color:#e0b4b0;background:#fdf6f5}.dcard.warn h3{color:var(--red)}
+.drow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:.95rem}
+.drow:last-child{border-bottom:0}
+.age{display:inline-block;flex:none;font:700 .8rem Barlow,sans-serif;color:#fff;background:var(--blue);padding:1px 7px}
+.drow .main{flex:1;min-width:0}.drow .main small{display:block;color:var(--muted);font-size:.8rem}
+.drow .val{flex:none;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.bar{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:.95rem}
+.bar .lbl{width:44px;font-weight:700;color:var(--navy)}
+.bar .trk{flex:1;background:var(--chalk);height:18px}.bar .fill{background:var(--blue);height:100%}
+.bar .num{width:48px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.pdfbar{display:flex;justify-content:flex-end;margin:0 0 10px}
 .owner-only{display:none}body.owner nav .owner-only{display:block}
 .owner-box{background:#fff;border:1px solid var(--line);padding:12px;margin-bottom:12px}
 .staff{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px 12px;margin-bottom:8px}
@@ -92,7 +110,8 @@ dialog img{width:70px;height:auto;justify-self:center}
     <div><h1>Rustenburg Junior League</h1><p>Under 11 · 13 · 15 · 17</p></div>
   </div>
   <nav id="tabs">
-    <button data-t="table" class="on">Table</button>
+    <button data-t="dash" class="on">Dashboard</button>
+    <button data-t="table">Table</button>
     <button data-t="fixtures">Fixtures</button>
     <button data-t="teams">Teams</button>
     <button data-t="staff" class="owner-only">Manage</button>
@@ -102,7 +121,8 @@ dialog img{width:70px;height:auto;justify-self:center}
 <div class="seasonbar"><select id="seasonSel" aria-label="Season" hidden></select></div>
 <div class="streams" id="streams"></div>
 <main>
-  <section id="table" class="on"><div class="wrap" id="tableBox"></div></section>
+  <section id="dash" class="on"><div id="dashBox"></div></section>
+  <section id="table"><div class="admin-only pdfbar" style="background:none;border:0;padding:0;margin:0 0 10px;text-align:right"><button id="logPdf">Download logs (PDF)</button></div><div class="wrap" id="tableBox"></div></section>
 
   <section id="fixtures">
     <div class="admin-only">
@@ -230,7 +250,7 @@ const hideCover = () => $("cover").classList.add("gone");
 setTimeout(hideCover, 3000);
 
 // The Combined log is only on the Table tab; Fixtures and Teams stay per age group
-let tab = "table", combined = false;
+let tab = "dash", combined = false;
 function renderStreams() {
   const onTable = tab === "table";
   $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream && !(onTable && combined) ? "on" : ""}">${x}</button>`).join("")
@@ -248,8 +268,9 @@ function showTab(t) {
   tab = t; renderStreams();
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === t));
-  $("streams").style.display = t === "staff" ? "none" : "";
+  $("streams").style.display = t === "staff" || t === "dash" ? "none" : "";
 }
+$("streams").style.display = "none";
 $("tabs").addEventListener("click", e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
 
 // Live data
@@ -341,6 +362,7 @@ function render() {
 
   renderStaff();
   renderSeasons();
+  renderDash();
 }
 
 // Admin actions
@@ -732,6 +754,89 @@ $("seasonBox").addEventListener("click", async e => {
   if (!confirm(`Make season ${sName(id)} the current season? The app will open on it for everyone.`)) return;
   try { await setDoc(doc(db, "settings", "league"), { currentSeason: id }, { merge: true }); pickedSeason = false; viewSeason = id; render(); }
   catch (err) { alert("Could not do that: " + err.message); }
+});
+
+// ---------- Dashboard ----------
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+function renderDash() {
+  const F = fixtures.filter(inSeasonF), T = teams.filter(inSeasonT), played = F.filter(f => f.played), toPlay = F.filter(f => !f.played);
+  const goals = played.reduce((n, f) => n + (+f.homeGoals || 0) + (+f.awayGoals || 0), 0), today = todayStr();
+  const ageTag = st => `<span class="age">${st}</span>`;
+  const game = f => `${esc(tname(f.home))} <b>${f.played ? esc(f.homeGoals) + " - " + esc(f.awayGoals) : "v"}</b> ${esc(tname(f.away))}`;
+  const when = f => [f.week ? "Week " + esc(f.week) : "", esc(f.date || "Date to be confirmed")].filter(Boolean).join(" · ");
+  const tile = (n, l) => `<div class="tile"><b>${n}</b><span>${l}</span></div>`;
+
+  // Leaders
+  const leaders = STREAMS.map(st => [st, standings(st)[0]]).filter(([, r]) => r);
+  const comb = combinedStandings()[0];
+  // Upcoming: games not played, from today onwards (undated last)
+  const upcoming = toPlay.filter(f => !f.date || f.date >= today).sort((a, b) => (a.date || "9").localeCompare(b.date || "9") || String(a.week || "").localeCompare(String(b.week || ""), undefined, { numeric: true })).slice(0, 8);
+  const latest = [...played].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 8);
+  const byAge = STREAMS.map(st => [st, played.filter(f => f.stream === st).reduce((n, f) => n + (+f.homeGoals || 0) + (+f.awayGoals || 0), 0), played.filter(f => f.stream === st).length]);
+  const maxG = Math.max(1, ...byAge.map(x => x[1]));
+  const big = [...played].sort((a, b) => Math.abs(b.homeGoals - b.awayGoals) - Math.abs(a.homeGoals - a.awayGoals) || (b.homeGoals + b.awayGoals) - (a.homeGoals + a.awayGoals))[0];
+
+  let h = `<div class="tiles">${tile(T.length, "Teams")}${tile(played.length, "Games played")}${tile(toPlay.length, "Games to play")}${tile(goals, "Goals scored")}${tile(played.length ? (goals / played.length).toFixed(1) : "0", "Goals per game")}</div><div class="dgrid">`;
+  h += `<div class="dcard"><h3>Log leaders${S() ? " · " + esc(sName(S())) : ""}</h3>${leaders.length ? leaders.map(([st, r]) => `<div class="drow">${ageTag(st)}<div class="main">${esc(r.name)}<small>P ${r.p} · GD ${r.gf - r.ga >= 0 ? "+" : ""}${r.gf - r.ga}</small></div><div class="val">${r.pts} pts</div></div>`).join("")
+    + (comb ? `<div class="drow"><span class="age" style="background:var(--navy)">ALL</span><div class="main">${esc(comb.name)}<small>Combined log</small></div><div class="val">${comb.pts} pts</div></div>` : "") : `<p class="empty">No teams yet.</p>`}</div>`;
+  h += `<div class="dcard"><h3>Coming up</h3>${upcoming.length ? upcoming.map(f => `<div class="drow">${ageTag(f.stream)}<div class="main">${game(f)}<small>${when(f)}</small></div></div>`).join("") : `<p class="empty">No upcoming games.</p>`}</div>`;
+  h += `<div class="dcard"><h3>Latest results</h3>${latest.length ? latest.map(f => `<div class="drow">${ageTag(f.stream)}<div class="main">${game(f)}<small>${when(f)}</small></div></div>`).join("") : `<p class="empty">No results yet.</p>`}</div>`;
+  h += `<div class="dcard"><h3>Goals by age group</h3>${byAge.map(([st, g, n]) => `<div class="bar"><span class="lbl">${st}</span><div class="trk"><div class="fill" style="width:${(g / maxG * 100).toFixed(1)}%"></div></div><span class="num">${g}</span></div>`).join("")}
+    ${big ? `<p class="note" style="margin-top:10px"><b>Biggest win:</b> ${ageTag(big.stream)} ${game(big)}</p>` : ""}</div>`;
+  if (isAdmin()) {
+    const late = toPlay.filter(f => f.date && f.date < today), noDate = toPlay.filter(f => !f.date), noWeek = F.filter(f => !f.week && f.week !== 0);
+    const items = [...late.map(f => [f, "Date has passed, no score captured"]), ...noDate.map(f => [f, "No date set"])];
+    h += `<div class="dcard ${items.length ? "warn" : ""}"><h3>Needs attention</h3>${items.length ? items.slice(0, 12).map(([f, why]) => `<div class="drow">${ageTag(f.stream)}<div class="main">${game(f)}<small>${why}${f.date ? " · " + esc(f.date) : ""}</small></div></div>`).join("") + (items.length > 12 ? `<p class="note">and ${items.length - 12} more</p>` : "") : `<p class="empty">Nothing outstanding. All past games have scores.</p>`}
+      ${noWeek.length ? `<p class="note" style="margin-top:8px">${noWeek.length} fixture(s) have no week number.</p>` : ""}</div>`;
+  }
+  $("dashBox").innerHTML = h + `</div>`;
+}
+
+// ---------- Download the logs as a PDF (admins) ----------
+const loadScript = src => new Promise((ok, bad) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error("Could not load " + src)); document.head.appendChild(el); });
+async function imgData(url) { const b = await (await fetch(url)).blob(); return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); }); }
+$("logPdf").addEventListener("click", async e => {
+  const btn = e.target; btn.disabled = true; btn.textContent = "Making PDF…";
+  try {
+    await loadScript("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+    await loadScript("https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js");
+    const { jsPDF } = window.jspdf, pdf = new jsPDF({ unit: "mm", format: "a4" }), W = 210, NAVY = [0, 20, 53], BLUE = [0, 111, 186];
+    const logo = await imgData("logo.png").catch(() => null);
+    const d = new Date(), made = `${d.getDate()} ${["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()]} ${d.getFullYear()}`;
+    // Header
+    pdf.setFillColor(...NAVY); pdf.rect(0, 0, W, 34, "F"); pdf.setFillColor(...BLUE); pdf.rect(0, 34, W, 1.5, "F");
+    if (logo) pdf.addImage(logo, "PNG", 12, 4, 23.3, 26);
+    pdf.setTextColor(255, 255, 255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(20); pdf.text("RUSTENBURG JUNIOR LEAGUE", 42, 16);
+    pdf.setFontSize(12); pdf.setTextColor(159, 208, 247); pdf.text(`LEAGUE LOGS${S() ? "  ·  SEASON " + sName(S()).toUpperCase() : ""}`, 42, 24);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.setTextColor(201, 212, 230); pdf.text(`As at ${made}`, 42, 30);
+    let y = 44;
+    const table = (title, rows, comb) => {
+      if (!rows.length) return;
+      if (y > 250) { pdf.addPage(); y = 16; }
+      pdf.setTextColor(...NAVY); pdf.setFont("helvetica", "bold"); pdf.setFontSize(13); pdf.text(title, 14, y); y += 2;
+      pdf.autoTable({
+        startY: y, margin: { left: 14, right: 14, bottom: 16 }, rowPageBreak: "avoid",
+        head: [["#", comb ? "Club" : "Team", "P", "W", "D", "L", "GF", "GA", "GD", "Pts"]],
+        body: rows.map((r, i) => [i + 1, comb ? `${r.name}\n${r.ages.join(" · ")}` : r.name, r.p, r.w, r.d, r.l, r.gf, r.ga, (r.gf - r.ga > 0 ? "+" : "") + (r.gf - r.ga), r.pts]),
+        styles: { fontSize: 9.5, cellPadding: 1.8, halign: "center", textColor: [11, 23, 48], lineColor: [214, 219, 227], lineWidth: 0.2 },
+        headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [243, 245, 249] },
+        columnStyles: { 1: { halign: "left", cellWidth: 70 }, 9: { fontStyle: "bold" } },
+        didParseCell: c => { if (c.section === "body" && c.row.index === 0) { c.cell.styles.fillColor = [227, 239, 250]; } },
+      });
+      y = pdf.lastAutoTable.finalY + 10;
+    };
+    STREAMS.forEach(st => table(`${st} Log`, standings(st)));
+    table("Combined Log", combinedStandings(), true);
+    if (y > 270) { pdf.addPage(); y = 16; }
+    pdf.setFont("helvetica", "italic"); pdf.setFontSize(8.5); pdf.setTextColor(85, 96, 122);
+    pdf.text("Win 3 points, draw 1, loss 0. Teams are ranked by points, then goal difference, then goals scored. The Combined Log adds each club's results from all age groups.", 14, y, { maxWidth: W - 28 });
+    // Page numbers
+    const n = pdf.getNumberOfPages();
+    for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(85, 96, 122); pdf.text(`Rustenburg Junior League  ·  Page ${i} of ${n}`, W / 2, 290, { align: "center" }); }
+    pdf.save(`RJL Logs${S() ? " " + sName(S()) : ""} ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.pdf`);
+  } catch (err) { alert("Could not make the PDF: " + err.message); }
+  btn.disabled = false; btn.textContent = "Download logs (PDF)";
 });
 
 // ---------- Login ----------
