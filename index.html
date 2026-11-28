@@ -37,6 +37,7 @@ td.pts{font-weight:700;color:var(--navy)}
 tbody tr:first-child td{background:var(--lead)}
 tbody tr:first-child td:first-child{box-shadow:inset 4px 0 0 var(--blue)}
 .wrap{overflow-x:auto}
+@media (max-width:420px){th,td{padding:7px 3px;font-size:.84rem}td:nth-child(2),th:nth-child(2){padding-left:5px}#tableBox td:nth-child(2){word-break:normal}main{padding:12px}}
 #tableBox h2{margin:4px 0 10px;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
 small.ages{display:block;color:var(--muted);font-size:.78rem}
 .fx{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px;margin-bottom:8px}
@@ -60,7 +61,8 @@ body.admin .admin-only{display:block}
 .admin-only form,.owner-box form{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}
 .admin-only b,.owner-box b{color:var(--navy)}
 .note{font-size:.9rem;color:var(--muted);margin:2px 0 8px}
-.sbox input{width:52px;text-align:center}
+.sbox input{width:52px;text-align:center}.sbox input.wk{width:64px}.sbox label{font-size:.85rem;color:var(--muted)}
+.wkh{font:700 1.15rem "Barlow Condensed",sans-serif;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--line)}.wkh:first-child{margin-top:4px}
 .bar{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:8px 16px;max-width:760px;margin:0 auto;font-size:.9rem;color:var(--muted)}
 .bar button.pri{background:var(--navy)}
 dialog{border:0;border-top:5px solid var(--blue);padding:20px;max-width:340px;width:90%}dialog form{display:grid;gap:10px}
@@ -106,6 +108,7 @@ dialog img{width:70px;height:auto;justify-self:center}
     <div class="admin-only">
       <b>Add fixture</b>
       <form id="fxForm">
+        <input id="fxWeek" type="number" min="1" step="1" placeholder="Week no." style="width:100px">
         <input type="date" id="fxDate" required>
         <select id="fxHome" required></select>
         <select id="fxAway" required></select>
@@ -171,6 +174,7 @@ dialog img{width:70px;height:auto;justify-self:center}
     <div id="staffBox"></div>
   </section>
 </main>
+<footer style="max-width:760px;margin:0 auto;padding:8px 16px 24px;font-size:.85rem;color:var(--muted)"><a href="privacy.html" style="color:var(--muted)">Privacy policy</a></footer>
 
 <dialog id="dlg">
   <form id="loginForm" method="dialog">
@@ -298,18 +302,26 @@ function render() {
   // Fixtures (keep any scores an admin is busy typing when live data refreshes)
   const typed = {};
   document.querySelectorAll(".sbox input").forEach(i => { if (i.value !== i.defaultValue) typed[i.id] = i.value; });
-  $("fxBox").innerHTML = fxs().length ? fxs().map(f => `
+  // Fixtures grouped by week number; fixtures without a week go last
+  const wnum = f => f.week !== undefined && f.week !== null && f.week !== "" ? String(f.week) : "";
+  const list = [...fxs()].sort((x, y) => (wnum(x) ? 0 : 1) - (wnum(y) ? 0 : 1) || wnum(x).localeCompare(wnum(y), undefined, { numeric: true }) || (x.date || "9").localeCompare(y.date || "9"));
+  const anyWeek = list.some(wnum); let lastWk = null;
+  $("fxBox").innerHTML = list.length ? list.map(f => {
+    const w = wnum(f), head = anyWeek && w !== lastWk ? `<h3 class="wkh">${w ? "Week " + esc(w) : "Week not set"}</h3>` : ""; lastWk = w;
+    return head + `
     <div class="fx">
       <span class="t">${esc(tname(f.home))}</span>
       ${f.played ? `<span class="sc">${esc(f.homeGoals)} - ${esc(f.awayGoals)}</span>` : `<span class="sc up">vs</span>`}
       <span class="t">${esc(tname(f.away))}</span>
-      <small>${f.week ? "Week " + esc(f.week) + " · " : ""}${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
+      <small>${esc(f.date || "Date to be confirmed")}${f.played ? " · Full time" : ""}</small>
       ${isAdmin() ? `<div class="sbox" style="grid-column:1/-1">
         <input type="number" min="0" step="1" id="h_${f.id}" value="${esc(f.homeGoals)}" aria-label="Home goals">
         <input type="number" min="0" step="1" id="a_${f.id}" value="${esc(f.awayGoals)}" aria-label="Away goals">
-        <button data-save="${f.id}">Save score</button>
+        <label>Week <input class="wk" type="number" min="1" step="1" id="w_${f.id}" value="${esc(w)}" aria-label="Week number"></label>
+        <button data-save="${f.id}">Save</button>
         <button class="x" data-delfx="${f.id}">Delete</button></div>` : ""}
-    </div>`).join("") : `<p class="empty">No ${stream} fixtures yet.</p>`;
+    </div>`;
+  }).join("") : `<p class="empty">No ${stream} fixtures yet.</p>`;
   Object.entries(typed).forEach(([id, v]) => { const el = $(id); if (el) el.value = v; });
 
   // Teams + players
@@ -336,10 +348,17 @@ document.addEventListener("click", async e => {
   const d = e.target.dataset; if (!isAdmin()) return;
   try {
     if (d.save) {
-      const h = $("h_" + d.save).value, a = $("a_" + d.save).value;
-      if (h === "" || a === "") return alert("Enter both scores.");
-      if (!Number.isInteger(+h) || !Number.isInteger(+a) || +h < 0 || +a < 0) return alert("Scores must be whole numbers, 0 or more.");
-      await updateDoc(doc(db, "fixtures", d.save), { homeGoals: +h, awayGoals: +a, played: true });
+      const h = $("h_" + d.save).value, a = $("a_" + d.save).value, w = $("w_" + d.save).value.trim();
+      const f = fixtures.find(x => x.id === d.save) || {}, upd = {};
+      if ((h === "") !== (a === "")) return alert("Enter both scores, or leave both blank to save only the week.");
+      if (h !== "") {
+        if (!Number.isInteger(+h) || !Number.isInteger(+a) || +h < 0 || +a < 0) return alert("Scores must be whole numbers, 0 or more.");
+        Object.assign(upd, { homeGoals: +h, awayGoals: +a, played: true });
+      }
+      if (w !== "" && (!Number.isInteger(+w) || +w < 1)) return alert("Week must be a whole number, 1 or more.");
+      if ((w === "" ? "" : String(+w)) !== String(f.week ?? "")) upd.week = w === "" ? "" : String(+w);
+      if (!Object.keys(upd).length) return;
+      await updateDoc(doc(db, "fixtures", d.save), upd);
     }
     if (d.delfx && confirm("Delete this fixture?")) await deleteDoc(doc(db, "fixtures", d.delfx));
     if (d.delteam) {
@@ -380,7 +399,7 @@ $("plForm").addEventListener("submit", async e => {
 $("fxForm").addEventListener("submit", async e => {
   e.preventDefault();
   if ($("fxHome").value === $("fxAway").value) return alert("Pick two different teams.");
-  try { await addDoc(collection(db, "fixtures"), { stream, ...(S() ? { season: S() } : {}), date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
+  try { await addDoc(collection(db, "fixtures"), { stream, ...(S() ? { season: S() } : {}), ...($("fxWeek").value ? { week: String(+$("fxWeek").value) } : {}), date: $("fxDate").value, home: $("fxHome").value, away: $("fxAway").value, played: false }); }
   catch (err) { alert("Could not save: " + err.message); }
 });
 
