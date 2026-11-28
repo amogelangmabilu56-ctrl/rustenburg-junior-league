@@ -93,7 +93,7 @@ dialog img{width:70px;height:auto;justify-self:center}
 .bar .trk{flex:1;background:var(--chalk);height:18px}.bar .fill{background:var(--blue);height:100%}
 .bar .num{width:48px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .pdfbar{display:flex;justify-content:flex-end;margin:0 0 10px}
-.owner-only{display:none}body.owner nav .owner-only{display:block}
+.owner-only{display:none}body.owner nav .owner-only{display:block}nav .admin-tab{display:none}body.admin nav .admin-tab{display:block}
 .owner-box{background:#fff;border:1px solid var(--line);padding:12px;margin-bottom:12px}
 .staff{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px 12px;margin-bottom:8px}
 .staff .who{flex:1;min-width:180px}.staff .who span{display:block;color:var(--muted);font-size:.9rem}
@@ -110,8 +110,8 @@ dialog img{width:70px;height:auto;justify-self:center}
     <div><h1>Rustenburg Junior League</h1><p>Under 11 · 13 · 15 · 17</p></div>
   </div>
   <nav id="tabs">
-    <button data-t="dash" class="on">Dashboard</button>
-    <button data-t="table">Table</button>
+    <button data-t="dash" class="admin-tab">Dashboard</button>
+    <button data-t="table" class="on">Table</button>
     <button data-t="fixtures">Fixtures</button>
     <button data-t="teams">Teams</button>
     <button data-t="staff" class="owner-only">Manage</button>
@@ -121,8 +121,8 @@ dialog img{width:70px;height:auto;justify-self:center}
 <div class="seasonbar"><select id="seasonSel" aria-label="Season" hidden></select></div>
 <div class="streams" id="streams"></div>
 <main>
-  <section id="dash" class="on"><div id="dashBox"></div></section>
-  <section id="table"><div class="admin-only pdfbar" style="background:none;border:0;padding:0;margin:0 0 10px;text-align:right"><button id="logPdf">Download logs (PDF)</button></div><div class="wrap" id="tableBox"></div></section>
+  <section id="dash"><div id="dashBox"></div></section>
+  <section id="table" class="on"><div class="admin-only pdfbar" style="background:none;border:0;padding:0;margin:0 0 10px;text-align:right"><button id="logPdf">Download logs (PDF)</button></div><div class="wrap" id="tableBox"></div></section>
 
   <section id="fixtures">
     <div class="admin-only">
@@ -250,7 +250,7 @@ const hideCover = () => $("cover").classList.add("gone");
 setTimeout(hideCover, 3000);
 
 // The Combined log is only on the Table tab; Fixtures and Teams stay per age group
-let tab = "dash", combined = false;
+let tab = "table", combined = false;
 function renderStreams() {
   const onTable = tab === "table";
   $("streams").innerHTML = STREAMS.map(x => `<button data-s="${x}" class="${x === stream && !(onTable && combined) ? "on" : ""}">${x}</button>`).join("")
@@ -270,7 +270,6 @@ function showTab(t) {
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === t));
   $("streams").style.display = t === "staff" || t === "dash" ? "none" : "";
 }
-$("streams").style.display = "none";
 $("tabs").addEventListener("click", e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
 
 // Live data
@@ -759,6 +758,7 @@ $("seasonBox").addEventListener("click", async e => {
 // ---------- Dashboard ----------
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 function renderDash() {
+  if (!isAdmin()) { $("dashBox").innerHTML = ""; return; }   // Dashboard is for admins only
   const F = fixtures.filter(inSeasonF), T = teams.filter(inSeasonT), played = F.filter(f => f.played), toPlay = F.filter(f => !f.played);
   const goals = played.reduce((n, f) => n + (+f.homeGoals || 0) + (+f.awayGoals || 0), 0), today = todayStr();
   const ageTag = st => `<span class="age">${st}</span>`;
@@ -865,6 +865,7 @@ function setRole(role, email) {
     staff = [];
     if ($("staff").classList.contains("on")) showTab("table");
   }
+  if (!role && tab === "dash") showTab("table");
   render();
 }
 onAuthStateChanged(auth, async u => {
